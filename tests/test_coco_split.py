@@ -88,6 +88,19 @@ def test_redistribute_forces_rare_class_train_only():
     assert set_of_photo[("s", 101)] == "train"
 
 
+def test_redistribute_is_independent_of_input_box_order():
+    # same boxes, two different list orders -- images_per_class is built from a set
+    # internally, whose iteration order is NOT guaranteed stable across Python
+    # processes (string hash randomization), so this must not leak into the result
+    boxes_forward = _boxes_for_class("common", range(10)) + _boxes_for_class("rare", [100, 101])
+    boxes_reversed = list(reversed(boxes_forward))
+
+    result_forward = redistribute(boxes_forward, min_photos=4, seed=42)
+    result_reversed = redistribute(boxes_reversed, min_photos=4, seed=42)
+
+    assert result_forward == result_reversed
+
+
 def test_redistribute_locks_a_shared_photo_to_the_rarer_classs_choice():
     # "rare" (2 boxes) is processed before "common" (4 boxes), and they share photo p1
     boxes = (

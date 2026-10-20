@@ -72,7 +72,10 @@ def redistribute(boxes, min_photos=4, seed=42):
 
     for class_name in reversed(sorted_classes):  # rarest first -- gets priority on shared photos
         total_photos = images_per_class[class_name]
-        unclaimed = [photo for photo in total_photos if photo not in set_of_photo]
+        # sorted(), not a plain list comprehension over the set: set iteration order
+        # depends on Python's per-process string hash randomization, so without this,
+        # the same seed could still shuffle a differently-ordered input each run
+        unclaimed = sorted(photo for photo in total_photos if photo not in set_of_photo)
         rng.shuffle(unclaimed)
 
         if len(total_photos) < min_photos:
