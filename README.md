@@ -39,10 +39,14 @@ image --> Backbone --> P3, P4, P5 (strides 8/16/32)
   topped with `SPPF`.
 - **Neck**: upsample + concat + `C2f` (top-down), then downsample + concat + `C2f`
   (bottom-up) -- lets every scale see both fine detail and deep semantics.
-- **Head**: per scale, a shared conv trunk splits into a box-regression branch (4
-  channels, `(l,t,r,b)` distances from the cell center) and a classification branch
-  (`num_classes` channels). No separate objectness branch -- "is there an object" is
-  implicit in the class scores, matching YOLOv8's actual design.
+- **Head**: per scale, a shared conv trunk splits into three branches -- box
+  regression (4 channels, `(l,t,r,b)` distances from the cell center), objectness
+  (1 channel), and classification (`num_classes` channels). Originally merged
+  objectness into the class scores (YOLOv8's actual design), with focal loss to
+  offset the resulting ~1:20,000 positive:negative cell ratio at train time; in
+  practice this didn't converge within budget, so objectness was decoupled back out
+  (YOLOv1-v5 style) -- classification loss is now computed only at positive cells,
+  removing it from facing that imbalance at all, rather than just reweighting it.
 - **Target assignment**: FCOS-style static size-range routing (a box goes to the
   scale whose stride best matches its size), stride-normalized regression targets,
   smallest-box-wins on cell collisions.

@@ -16,16 +16,24 @@ def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
     boxes: Tensor (N, 4) in absolute pixel coords, (x1, y1, x2, y2).
     labels: Tensor (N,) of class indices, one per box.
 
-    Returns a list of (box_target, cls_target) pairs, one per level:
+    Returns a list of (box_target, obj_target, cls_target) triples, one per level:
         box_target: (4, H, W) -- (l, t, r, b) distances from the cell center to the
                     box edges, in units of that level's stride (not raw pixels).
-        cls_target: (num_classes, H, W) -- one-hot at the assigned cell, zero elsewhere.
+        obj_target: (1, H, W) -- 1.0 at the assigned cell, 0.0 elsewhere. Decoupled
+                    from cls_target so classification loss can be gated to positive
+                    cells only (see train/loss.py) -- the YOLOv1-style split, rather
+                    than merging "is there an object" into the class scores.
+        cls_target: (num_classes, H, W) -- one-hot at the assigned cell, meaningless
+                    (and unused) elsewhere, since cls loss never looks at those cells.
 
     On a collision (two boxes assigned the same cell), the smaller-area box wins --
     the standard FCOS tie-break, prioritizing the harder, smaller object.
     """
     grid_sizes = [(img_h // s, img_w // s) for s in strides]
-    targets = [(torch.zeros(4, h, w), torch.zeros(num_classes, h, w)) for h, w in grid_sizes]
+    targets = [
+        (torch.zeros(4, h, w), torch.zeros(1, h, w), torch.zeros(num_classes, h, w))
+        for h, w in grid_sizes
+    ]
     claimed_area = [torch.full((h, w), float("inf")) for h, w in grid_sizes]
 
     for box, label in zip(boxes, labels):
@@ -36,7 +44,7 @@ def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
 
         level = assign_level(size, thresholds)
         stride = strides[level]
-        box_target, cls_target = targets[level]
+        box_target, obj_target, cls_target = targets[level]
         h, w = grid_sizes[level]
 
         cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
@@ -56,6 +64,7 @@ def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
         b = (y2 - cell_cy) / stride
 
         box_target[:, grid_y, grid_x] = torch.tensor([l, t, r, b])
+        obj_target[0, grid_y, grid_x] = 1.0
         cls_target[:, grid_y, grid_x] = 0.0  # clear in case a since-replaced box set it
         cls_target[int(label), grid_y, grid_x] = 1.0
 
@@ -65,8 +74,8 @@ def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
 def build_targets_batch(boxes_list, labels_list, img_h, img_w, strides, num_classes, thresholds):
     """boxes_list/labels_list: length B, per-image GT (ragged counts).
 
-    Returns a list of (box_target, cls_target) pairs, one per level -- same
-    structure as build_targets, but each tensor now has a batch dimension.
+    Returns a list of (box_target, obj_target, cls_target) triples, one per level --
+    same structure as build_targets, but each tensor now has a batch dimension.
     """
     per_image = [
         build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
@@ -75,9 +84,10 @@ def build_targets_batch(boxes_list, labels_list, img_h, img_w, strides, num_clas
 
     batched = []
     for level in range(len(strides)):
-        box_targets = torch.stack([pair[level][0] for pair in per_image])
-        cls_targets = torch.stack([pair[level][1] for pair in per_image])
-        batched.append((box_targets, cls_targets))
+        box_targets = torch.stack([triple[level][0] for triple in per_image])
+        obj_targets = torch.stack([triple[level][1] for triple in per_image])
+        cls_targets = torch.stack([triple[level][2] for triple in per_image])
+        batched.append((box_targets, obj_targets, cls_targets))
     return batched
 
 

@@ -15,10 +15,10 @@ from train.trainer import load_checkpoint
 
 
 class ExportWrapper(torch.nn.Module):
-    """YOLO.forward returns a nested ((box,cls), (box,cls), (box,cls)) tuple -- fine
-    for training/eval code, but torch.onnx.export wants a flat tuple of tensors
-    with named outputs. This wrapper only exists for export; it never touches the
-    real model's forward signature, so nothing elsewhere has to change."""
+    """YOLO.forward returns a nested ((box,obj,cls), (box,obj,cls), (box,obj,cls))
+    tuple -- fine for training/eval code, but torch.onnx.export wants a flat tuple
+    of tensors with named outputs. This wrapper only exists for export; it never
+    touches the real model's forward signature, so nothing elsewhere has to change."""
 
     def __init__(self, model):
         super().__init__()
@@ -26,13 +26,13 @@ class ExportWrapper(torch.nn.Module):
 
     def forward(self, x):
         outputs = self.model(x)
-        return tuple(t for pair in outputs for t in pair)  # box0, cls0, box1, cls1, box2, cls2
+        return tuple(t for triple in outputs for t in triple)  # box0,obj0,cls0, box1,obj1,cls1, ...
 
 
 def output_names(n_levels=3):
     names = []
     for i in range(n_levels):
-        names += [f"box_{i}", f"cls_{i}"]
+        names += [f"box_{i}", f"obj_{i}", f"cls_{i}"]
     return names
 
 

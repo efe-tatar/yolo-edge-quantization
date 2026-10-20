@@ -9,9 +9,11 @@ def decode_predictions(preds, strides, conf_thresh=0.3, iou_thresh=0.5):
     for b in range(batch_size):
         level_boxes, level_scores, level_labels = [], [], []
 
-        for (box_pred, cls_pred), stride in zip(preds, strides):
-            decoded = decode_boxes(box_pred[b:b+1], stride)        # (1, H, W, 4)
-            conf, cls_idx = torch.sigmoid(cls_pred[b]).max(dim=0)  # (H, W) each
+        for (box_pred, obj_pred, cls_pred), stride in zip(preds, strides):
+            decoded = decode_boxes(box_pred[b:b+1], stride)              # (1, H, W, 4)
+            obj_conf = torch.sigmoid(obj_pred[b, 0])                     # (H, W)
+            cls_conf, cls_idx = torch.sigmoid(cls_pred[b]).max(dim=0)     # (H, W) each
+            conf = obj_conf * cls_conf  # YOLOv3-v5's combination: "is there anything" x "how sure of the class"
 
             boxes = decoded.reshape(-1, 4)
             scores = conf.reshape(-1)

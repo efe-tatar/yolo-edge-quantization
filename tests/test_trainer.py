@@ -30,7 +30,7 @@ def test_train_one_epoch_runs_and_returns_losses():
         model, dataloader, optimizer, "cpu", IMG_SIZE, STRIDES, NUM_CLASSES, THRESHOLDS
     )
 
-    assert set(stats.keys()) == {"total", "box", "cls"}
+    assert set(stats.keys()) == {"total", "box", "obj", "cls"}
     assert all(torch.isfinite(torch.tensor(v)) for v in stats.values())
 
 

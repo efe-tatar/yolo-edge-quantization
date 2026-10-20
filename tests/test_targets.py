@@ -34,15 +34,17 @@ def test_single_small_box_assigned_to_level0():
     labels = torch.tensor([2])
 
     targets = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES, THRESHOLDS)
-    _, cls_t0 = targets[0]
-    _, cls_t1 = targets[1]
-    _, cls_t2 = targets[2]
+    _, obj_t0, cls_t0 = targets[0]
+    _, obj_t1, cls_t1 = targets[1]
+    _, obj_t2, cls_t2 = targets[2]
 
+    assert obj_t0.sum().item() == 1.0
+    assert obj_t1.sum().item() == 0.0
+    assert obj_t2.sum().item() == 0.0
     assert cls_t0.sum().item() == 1.0
-    assert cls_t1.sum().item() == 0.0
-    assert cls_t2.sum().item() == 0.0
 
     # center (122, 122), stride 8 -> cell (15, 15)
+    assert obj_t0[0, 15, 15] == 1.0
     assert cls_t0[2, 15, 15] == 1.0
 
 
@@ -50,7 +52,7 @@ def test_decode_recovers_original_box():
     boxes = torch.tensor([[100.0, 100.0, 144.0, 144.0]])
     labels = torch.tensor([0])
     targets = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES, THRESHOLDS)
-    box_t0, _ = targets[0]
+    box_t0, _, _ = targets[0]
 
     decoded = decode_boxes(box_t0.unsqueeze(0), STRIDES[0])
     x1, y1, x2, y2 = decoded[0, 15, 15].tolist()
@@ -68,8 +70,9 @@ def test_collision_keeps_smaller_box():
     labels = torch.tensor([0, 1])
 
     targets = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES, THRESHOLDS)
-    _, cls_t0 = targets[0]
+    _, obj_t0, cls_t0 = targets[0]
 
+    assert obj_t0.sum().item() == 1.0
     assert cls_t0.sum().item() == 1.0
     assert cls_t0[1].sum().item() == 1.0  # smaller box (label 1) won the cell
     assert cls_t0[0].sum().item() == 0.0
@@ -89,8 +92,9 @@ def test_batch_targets_stack_correctly():
     assert len(batched) == 3
     for level, stride in enumerate(STRIDES):
         h = w = IMG_SIZE // stride
-        box_targets, cls_targets = batched[level]
+        box_targets, obj_targets, cls_targets = batched[level]
         assert box_targets.shape == (2, 4, h, w)
+        assert obj_targets.shape == (2, 1, h, w)
         assert cls_targets.shape == (2, NUM_CLASSES, h, w)
 
 
@@ -99,15 +103,17 @@ def test_loss_near_zero_on_perfect_prediction():
     labels = torch.tensor([2])
     single = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES, THRESHOLDS)
 
-    targets = [(bt.unsqueeze(0), ct.unsqueeze(0)) for bt, ct in single]
+    targets = [(bt.unsqueeze(0), ot.unsqueeze(0), ct.unsqueeze(0)) for bt, ot, ct in single]
     preds = []
-    for box_target, cls_target in targets:
+    for box_target, obj_target, cls_target in targets:
         box_pred = box_target.clone()
+        obj_pred = torch.where(obj_target == 1.0, torch.tensor(10.0), torch.tensor(-10.0))
         cls_pred = torch.where(cls_target == 1.0, torch.tensor(10.0), torch.tensor(-10.0))
-        preds.append((box_pred, cls_pred))
+        preds.append((box_pred, obj_pred, cls_pred))
 
     out = yolo_loss(preds, targets)
     assert out["box"].item() == 0.0
+    assert out["obj"].item() < 1e-2
     assert out["cls"].item() < 1e-2
 
 
@@ -115,8 +121,9 @@ def test_loss_handles_no_boxes():
     targets, preds = [], []
     for stride in STRIDES:
         h = w = IMG_SIZE // stride
-        targets.append((torch.zeros(1, 4, h, w), torch.zeros(1, NUM_CLASSES, h, w)))
-        preds.append((torch.randn(1, 4, h, w), torch.full((1, NUM_CLASSES, h, w), -10.0)))
+        targets.append((torch.zeros(1, 4, h, w), torch.zeros(1, 1, h, w), torch.zeros(1, NUM_CLASSES, h, w)))
+        preds.append((torch.randn(1, 4, h, w), torch.full((1, 1, h, w), -10.0),
+                      torch.full((1, NUM_CLASSES, h, w), -10.0)))
 
     out = yolo_loss(preds, targets)
     assert out["box"].item() == 0.0

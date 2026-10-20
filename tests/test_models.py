@@ -66,8 +66,9 @@ def test_backbone_shapes():
 
 def test_head_shapes():
     x = torch.randn(1, 128, 20, 20)
-    box, cls = Head(128, num_classes=54)(x)
+    box, obj, cls = Head(128, num_classes=54)(x)
     assert box.shape == (1, 4, 20, 20)
+    assert obj.shape == (1, 1, 20, 20)
     assert cls.shape == (1, 54, 20, 20)
 
 
@@ -84,13 +85,16 @@ def test_neck_shapes():
 def test_yolo_end_to_end_shapes():
     x = torch.randn(1, 3, 320, 320)
     num_classes = 54
-    (box3, cls3), (box4, cls4), (box5, cls5) = YOLO(num_classes)(x)
+    (box3, obj3, cls3), (box4, obj4, cls4), (box5, obj5, cls5) = YOLO(num_classes)(x)
 
     assert box3.shape == (1, 4, 40, 40)
+    assert obj3.shape == (1, 1, 40, 40)
     assert cls3.shape == (1, num_classes, 40, 40)
 
     assert box4.shape == (1, 4, 20, 20)
+    assert obj4.shape == (1, 1, 20, 20)
     assert cls4.shape == (1, num_classes, 20, 20)
 
     assert box5.shape == (1, 4, 10, 10)
+    assert obj5.shape == (1, 1, 10, 10)
     assert cls5.shape == (1, num_classes, 10, 10)

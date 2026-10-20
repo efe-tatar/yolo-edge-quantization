@@ -9,8 +9,9 @@ class Head(torch.nn.Module):
         super().__init__()
         self.conv = ConvBlock(c_in, c_in, k=3)
         self.box = torch.nn.Conv2d(c_in, 4, kernel_size=1)
+        self.obj = torch.nn.Conv2d(c_in, 1, kernel_size=1)
         self.cls = torch.nn.Conv2d(c_in, num_classes, kernel_size=1)
 
     def forward(self, x):
         x = self.conv(x)
-        return self.box(x), self.cls(x)
+        return self.box(x), self.obj(x), self.cls(x)

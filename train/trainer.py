@@ -14,7 +14,7 @@ def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num
     where boxes_list/labels_list are length-B lists of per-image (ragged) tensors --
     the same contract as data/dataset.py's collate_fn."""
     model.train()
-    totals = {"total": 0.0, "box": 0.0, "cls": 0.0}
+    totals = {"total": 0.0, "box": 0.0, "obj": 0.0, "cls": 0.0}
     n_batches = 0
 
     for images, boxes_list, labels_list in dataloader:
@@ -27,7 +27,7 @@ def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num
         targets = build_targets_batch(
             boxes_list, labels_list, img_size, img_size, strides, num_classes, thresholds
         )
-        targets = [(bt.to(device), ct.to(device)) for bt, ct in targets]
+        targets = [(bt.to(device), ot.to(device), ct.to(device)) for bt, ot, ct in targets]
 
         losses = yolo_loss(preds, targets, box_weight=box_weight)
 
@@ -37,6 +37,7 @@ def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num
 
         totals["total"] += losses["total"].item()
         totals["box"] += losses["box"].item()
+        totals["obj"] += losses["obj"].item()
         totals["cls"] += losses["cls"].item()
         n_batches += 1
 
@@ -48,7 +49,7 @@ def evaluate_loss(model, dataloader, device, img_size, strides, num_classes, thr
                    box_weight=5.0):
     """Same loop as train_one_epoch but no gradient step -- for a validation split."""
     model.eval()
-    totals = {"total": 0.0, "box": 0.0, "cls": 0.0}
+    totals = {"total": 0.0, "box": 0.0, "obj": 0.0, "cls": 0.0}
     n_batches = 0
 
     for images, boxes_list, labels_list in dataloader:
@@ -60,12 +61,13 @@ def evaluate_loss(model, dataloader, device, img_size, strides, num_classes, thr
         targets = build_targets_batch(
             boxes_list, labels_list, img_size, img_size, strides, num_classes, thresholds
         )
-        targets = [(bt.to(device), ct.to(device)) for bt, ct in targets]
+        targets = [(bt.to(device), ot.to(device), ct.to(device)) for bt, ot, ct in targets]
 
         losses = yolo_loss(preds, targets, box_weight=box_weight)
 
         totals["total"] += losses["total"].item()
         totals["box"] += losses["box"].item()
+        totals["obj"] += losses["obj"].item()
         totals["cls"] += losses["cls"].item()
         n_batches += 1
 
@@ -153,14 +155,14 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
             model, train_loader, optimizer, device, img_size, strides, num_classes,
             thresholds, box_weight,
         )
-        msg = f"epoch {epoch}: train total={train_stats['total']:.4f} box={train_stats['box']:.4f} cls={train_stats['cls']:.4f}"
+        msg = f"epoch {epoch}: train total={train_stats['total']:.4f} box={train_stats['box']:.4f} obj={train_stats['obj']:.4f} cls={train_stats['cls']:.4f}"
 
         val_map = None
         if val_loader is not None:
             val_stats = evaluate_loss(
                 model, val_loader, device, img_size, strides, num_classes, thresholds, box_weight
             )
-            msg += f" | val total={val_stats['total']:.4f} box={val_stats['box']:.4f} cls={val_stats['cls']:.4f}"
+            msg += f" | val total={val_stats['total']:.4f} box={val_stats['box']:.4f} obj={val_stats['obj']:.4f} cls={val_stats['cls']:.4f}"
 
             map_results = evaluate_map(
                 model, val_loader, device, strides, num_classes, map_iou_thresholds=map_iou_thresholds

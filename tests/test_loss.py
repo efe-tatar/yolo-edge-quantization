@@ -29,20 +29,42 @@ def test_focal_loss_near_zero_on_confident_correct_predictions():
     assert focal_loss(logits, targets).item() < 1e-6
 
 
-def test_yolo_loss_use_focal_toggle_falls_back_to_plain_bce():
-    import torch.nn.functional as F
+def test_cls_loss_ignores_negative_cells_entirely():
+    # cell 0 is positive (correct, confident prediction); cell 1 is negative, but its
+    # cls_pred screams the wrong thing (10.0) against a target of 0 -- if cls loss
+    # looked at negative cells at all, that alone would blow the loss way past 1e-2.
+    # It shouldn't be looked at: that's the entire point of decoupling cls from obj.
+    box_pred = torch.zeros(1, 4, 1, 2)
+    box_target = torch.zeros(1, 4, 1, 2)
 
-    cls_pred = torch.tensor([[[[0.0]]]])  # (1,1,1,1) -- uncertain logit, where focal differs from BCE
-    cls_target = torch.tensor([[[[1.0]]]])
-    box_pred = torch.zeros(1, 4, 1, 1)
-    box_target = torch.zeros(1, 4, 1, 1)
+    obj_pred = torch.tensor([[[[10.0, -10.0]]]])
+    obj_target = torch.tensor([[[[1.0, 0.0]]]])
 
-    preds = [(box_pred, cls_pred)]
-    targets = [(box_target, cls_target)]
+    cls_pred = torch.tensor([[[[10.0, 10.0]], [[-10.0, -10.0]], [[-10.0, -10.0]]]])
+    cls_target = torch.tensor([[[[1.0, 0.0]], [[0.0, 0.0]], [[0.0, 0.0]]]])
 
-    plain = yolo_loss(preds, targets, use_focal=False)
-    expected_bce = F.binary_cross_entropy_with_logits(cls_pred, cls_target)
-    assert torch.isclose(plain["cls"], expected_bce)
+    preds = [(box_pred, obj_pred, cls_pred)]
+    targets = [(box_target, obj_target, cls_target)]
 
-    focal = yolo_loss(preds, targets, use_focal=True)
-    assert not torch.isclose(focal["cls"], expected_bce)  # focal actually changes something
+    out = yolo_loss(preds, targets)
+    assert out["cls"].item() < 1e-2
+
+
+def test_obj_loss_applies_noobj_weight_to_negative_cells():
+    # same raw BCE magnitude at both cells (same logit, opposite target) -- a smaller
+    # noobj_weight should shrink the negative cell's contribution to the average
+    box_pred = torch.zeros(1, 4, 1, 2)
+    box_target = torch.zeros(1, 4, 1, 2)
+    cls_pred = torch.zeros(1, 1, 1, 2)
+    cls_target = torch.zeros(1, 1, 1, 2)
+
+    obj_pred = torch.tensor([[[[0.0, 0.0]]]])
+    obj_target = torch.tensor([[[[1.0, 0.0]]]])  # cell 0 positive, cell 1 negative
+
+    preds = [(box_pred, obj_pred, cls_pred)]
+    targets = [(box_target, obj_target, cls_target)]
+
+    weighted = yolo_loss(preds, targets, obj_weight=1.0, noobj_weight=0.5)
+    unweighted = yolo_loss(preds, targets, obj_weight=1.0, noobj_weight=1.0)
+
+    assert weighted["obj"].item() < unweighted["obj"].item()
