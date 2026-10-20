@@ -95,6 +95,11 @@ def decode_boxes(box_pred, stride):
     cell_cy, cell_cx = torch.meshgrid(ys, xs, indexing="ij")
 
     l, t, r, bo = box_pred.unbind(dim=1)
+    # targets are always >=0 by construction (a cell's center is always inside its
+    # box), but the raw network output isn't constrained that way -- an undertrained
+    # model can predict a negative distance, which would otherwise decode to an
+    # inverted box (x1 > x2), invalid for anything downstream (PIL, IoU, NMS)
+    l, t, r, bo = l.clamp(min=0), t.clamp(min=0), r.clamp(min=0), bo.clamp(min=0)
     l, t, r, bo = l * stride, t * stride, r * stride, bo * stride
 
     x1 = cell_cx.unsqueeze(0) - l

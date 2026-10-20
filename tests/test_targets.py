@@ -9,6 +9,18 @@ THRESHOLDS = (64, 128)
 NUM_CLASSES = 5
 
 
+def test_decode_boxes_clamps_negative_raw_predictions():
+    # an undertrained model can output a negative (l,t,r,b) -- decode must never
+    # produce an inverted box (x1 > x2 or y1 > y2), which downstream code (PIL,
+    # IoU, NMS) can't handle
+    box_pred = torch.tensor([[[-5.0]], [[-5.0]], [[-5.0]], [[-5.0]]]).unsqueeze(0)  # (1,4,1,1)
+    decoded = decode_boxes(box_pred, stride=8)
+
+    x1, y1, x2, y2 = decoded[0, 0, 0].tolist()
+    assert x1 <= x2
+    assert y1 <= y2
+
+
 def test_assign_level_boundaries():
     assert assign_level(10, THRESHOLDS) == 0
     assert assign_level(64, THRESHOLDS) == 0  # inclusive upper bound
