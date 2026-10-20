@@ -4,13 +4,15 @@ import torch
 
 from train.targets import build_targets_batch
 from train.loss import yolo_loss
+from train.decode import decode_predictions
+from train.metrics import mean_average_precision
 
 
 def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num_classes,
                      thresholds, box_weight=5.0):
     """One pass over dataloader. Yields (images, boxes_list, labels_list) per batch,
     where boxes_list/labels_list are length-B lists of per-image (ragged) tensors --
-    the same contract as data/dataset.py's collate_fn, whenever that comes back."""
+    the same contract as data/dataset.py's collate_fn."""
     model.train()
     totals = {"total": 0.0, "box": 0.0, "cls": 0.0}
     n_batches = 0
@@ -70,52 +72,106 @@ def evaluate_loss(model, dataloader, device, img_size, strides, num_classes, thr
     return {k: v / n_batches for k, v in totals.items()}
 
 
-def save_checkpoint(path, model, optimizer, epoch):
-    torch.save(
-        {
-            "epoch": epoch,
-            "model_state": model.state_dict(),
-            "optimizer_state": optimizer.state_dict(),
-        },
-        path,
-    )
+@torch.no_grad()
+def evaluate_map(model, dataloader, device, strides, num_classes, conf_thresh=0.3,
+                  iou_thresh=0.5, map_iou_thresholds=(0.5,)):
+    """Runs the model over dataloader, decodes predictions (confidence threshold +
+    NMS, same path real inference would use), and scores them against ground truth
+    with our own mean_average_precision -- not each framework's own eval, so every
+    number in a cross-model comparison comes from identical matching/AP code."""
+    model.eval()
+    all_preds = []
+    all_gts = []
+
+    for images, boxes_list, labels_list in dataloader:
+        images = images.to(device)
+        preds = model(images)
+        decoded = decode_predictions(preds, strides, conf_thresh=conf_thresh, iou_thresh=iou_thresh)
+
+        all_preds.extend(decoded)
+        all_gts.extend(zip(boxes_list, labels_list))
+
+    return mean_average_precision(all_preds, all_gts, num_classes, iou_thresholds=map_iou_thresholds)
 
 
-def load_checkpoint(path, model, optimizer, device):
-    ckpt = torch.load(path, map_location=device)
-    model.load_state_dict(ckpt["model_state"])
-    optimizer.load_state_dict(ckpt["optimizer_state"])
-    return ckpt["epoch"]
+def save_checkpoint(path, model, optimizer, epoch, extra=None):
+    """Written to a temp file then renamed: os.replace is atomic, so a crash or a
+    Colab disconnect mid-save never leaves a half-written checkpoint behind."""
+    state = {
+        "model": model.state_dict(),
+        "optimizer": optimizer.state_dict(),
+        "epoch": epoch,
+        **(extra or {}),
+    }
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".tmp"
+    torch.save(state, tmp)
+    os.replace(tmp, path)
+
+
+def load_checkpoint(path, model, optimizer=None, device="cpu"):
+    state = torch.load(path, map_location=device)
+    model.load_state_dict(state["model"])
+    if optimizer is not None and state.get("optimizer") is not None:
+        optimizer.load_state_dict(state["optimizer"])
+    return state
 
 
 def train(model, train_loader, optimizer, device, epochs, img_size, strides, num_classes,
-          thresholds, checkpoint_path, val_loader=None, box_weight=5.0, log_every=1):
-    """Resumes automatically if checkpoint_path already exists -- Colab sessions drop,
-    so every epoch is saved, and the next run picks up right after the last completed one."""
-    model.to(device)
-    start_epoch = 0
+          thresholds, out_dir, val_loader=None, box_weight=5.0, log_every=1,
+          train_sampler=None, map_iou_thresholds=(0.5,)):
+    """Resumes automatically from out_dir/latest.pt if it already exists -- Colab
+    sessions drop, so every epoch is saved, not just the end. out_dir/best.pt is
+    only (re)written when validation mAP@0.5 improves, and holds just the model --
+    latest.pt holds model+optimizer+epoch for exact resume.
 
-    if os.path.exists(checkpoint_path):
-        start_epoch = load_checkpoint(checkpoint_path, model, optimizer, device) + 1
-        print(f"resumed from checkpoint, starting at epoch {start_epoch}")
+    train_sampler: pass the RepeatFactorSampler instance (not just the DataLoader
+    wrapping it) so its set_epoch can be called -- PyTorch never does this for you.
+    """
+    model.to(device)
+    os.makedirs(out_dir, exist_ok=True)
+    latest_path = os.path.join(out_dir, "latest.pt")
+    best_path = os.path.join(out_dir, "best.pt")
+
+    start_epoch = 0
+    best_map = -1.0
+
+    if os.path.exists(latest_path):
+        state = load_checkpoint(latest_path, model, optimizer, device)
+        start_epoch = state["epoch"] + 1
+        best_map = state.get("best_map", -1.0)
+        print(f"resumed from {latest_path}, starting at epoch {start_epoch}")
 
     for epoch in range(start_epoch, epochs):
+        if train_sampler is not None:
+            train_sampler.set_epoch(epoch)
+
         train_stats = train_one_epoch(
             model, train_loader, optimizer, device, img_size, strides, num_classes,
             thresholds, box_weight,
         )
-
         msg = f"epoch {epoch}: train total={train_stats['total']:.4f} box={train_stats['box']:.4f} cls={train_stats['cls']:.4f}"
 
+        val_map = None
         if val_loader is not None:
             val_stats = evaluate_loss(
                 model, val_loader, device, img_size, strides, num_classes, thresholds, box_weight
             )
             msg += f" | val total={val_stats['total']:.4f} box={val_stats['box']:.4f} cls={val_stats['cls']:.4f}"
 
+            map_results = evaluate_map(
+                model, val_loader, device, strides, num_classes, map_iou_thresholds=map_iou_thresholds
+            )
+            val_map = map_results[map_iou_thresholds[0]]
+            msg += f" | val mAP@{map_iou_thresholds[0]}={val_map:.4f}"
+
         if epoch % log_every == 0:
             print(msg)
 
-        save_checkpoint(checkpoint_path, model, optimizer, epoch)
+        save_checkpoint(latest_path, model, optimizer, epoch, extra={"best_map": best_map})
+
+        if val_map is not None and val_map > best_map:
+            best_map = val_map
+            save_checkpoint(best_path, model, optimizer, epoch, extra={"val_map": best_map})
 
     return model

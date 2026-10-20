@@ -1,0 +1,7 @@
+torch
+torchvision
+Pillow
+pytest
+onnx
+onnxruntime
+onnxscript
