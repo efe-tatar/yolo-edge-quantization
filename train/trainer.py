@@ -87,6 +87,9 @@ def evaluate_map(model, dataloader, device, strides, num_classes, conf_thresh=0.
         images = images.to(device)
         preds = model(images)
         decoded = decode_predictions(preds, strides, conf_thresh=conf_thresh, iou_thresh=iou_thresh)
+        # decoded predictions are on `device` (wherever the model ran); ground truth
+        # from the dataloader is always on CPU -- box_iou needs both on the same one
+        decoded = [(b.to("cpu"), s.to("cpu"), l.to("cpu")) for b, s, l in decoded]
 
         all_preds.extend(decoded)
         all_gts.extend(zip(boxes_list, labels_list))
