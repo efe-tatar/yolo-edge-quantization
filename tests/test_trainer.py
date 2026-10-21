@@ -61,6 +61,32 @@ def test_evaluate_map_runs_and_returns_a_score():
     assert 0.0 <= results[0.5] <= 1.0
 
 
+def test_class_agnostic_map_ignores_wrong_class_labels():
+    from train.targets import build_targets_batch
+
+    images, boxes_list, labels_list = make_batch()
+    targets = build_targets_batch(boxes_list, labels_list, IMG_SIZE, IMG_SIZE, STRIDES,
+                                  NUM_CLASSES, THRESHOLDS)
+
+    class PerfectBoxesWrongClass(torch.nn.Module):
+        """Exact boxes, confident objectness at the right cells, but the class is
+        always shifted by one -- localization perfect, classification always wrong."""
+        def forward(self, x):
+            preds = []
+            for box_t, obj_t, cls_t in targets:
+                obj_logit = torch.where(obj_t > 0, 6.0, -6.0)
+                cls_logit = torch.roll(cls_t, shifts=1, dims=1) * 12.0 - 6.0
+                preds.append((box_t.clone(), obj_logit, cls_logit))
+            return preds
+
+    model = PerfectBoxesWrongClass()
+    dataloader = [(images, boxes_list, labels_list)]
+
+    assert evaluate_map(model, dataloader, "cpu", STRIDES, NUM_CLASSES)[0.5] == 0.0
+    assert abs(evaluate_map(model, dataloader, "cpu", STRIDES, NUM_CLASSES,
+                            class_agnostic=True)[0.5] - 1.0) < 1e-6
+
+
 def test_checkpoint_save_and_resume(tmp_path):
     out_dir = str(tmp_path)
 

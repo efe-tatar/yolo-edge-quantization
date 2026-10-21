@@ -2,7 +2,7 @@ import torchvision
 import torch
 from train.targets import decode_boxes
 
-def decode_predictions(preds, strides, conf_thresh=0.3, iou_thresh=0.5):
+def decode_predictions(preds, strides, conf_thresh=0.3, iou_thresh=0.5, class_agnostic_nms=False):
     batch_size = preds[0][0].shape[0]
     results = []
 
@@ -32,7 +32,10 @@ def decode_predictions(preds, strides, conf_thresh=0.3, iou_thresh=0.5):
             results.append((all_boxes, all_scores, all_labels))
             continue
 
-        keep_idx = torchvision.ops.batched_nms(all_boxes, all_scores, all_labels, iou_thresh)
+        # class-agnostic: one shared NMS group, so overlapping boxes suppress each other
+        # even when their predicted classes differ
+        nms_groups = torch.zeros_like(all_labels) if class_agnostic_nms else all_labels
+        keep_idx = torchvision.ops.batched_nms(all_boxes, all_scores, nms_groups, iou_thresh)
         results.append((all_boxes[keep_idx], all_scores[keep_idx], all_labels[keep_idx]))
 
     return results

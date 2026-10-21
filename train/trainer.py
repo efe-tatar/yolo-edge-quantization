@@ -76,7 +76,7 @@ def evaluate_loss(model, dataloader, device, img_size, strides, num_classes, thr
 
 @torch.no_grad()
 def evaluate_map(model, dataloader, device, strides, num_classes, conf_thresh=0.001,
-                  iou_thresh=0.5, map_iou_thresholds=(0.5,)):
+                  iou_thresh=0.5, map_iou_thresholds=(0.5,), class_agnostic=False):
     """Runs the model over dataloader, decodes predictions (confidence threshold +
     NMS, same path real inference would use), and scores them against ground truth
     with our own mean_average_precision -- not each framework's own eval, so every
@@ -85,7 +85,11 @@ def evaluate_map(model, dataloader, device, strides, num_classes, conf_thresh=0.
     conf_thresh defaults low on purpose (Ultralytics' val uses 0.001 too): mAP already
     integrates over every confidence level, so a deployment-style 0.3 cutoff here just
     truncates the precision/recall curve -- and early in training can drop every true
-    positive, reporting exactly 0.0 for a model that is in fact learning."""
+    positive, reporting exactly 0.0 for a model that is in fact learning.
+
+    class_agnostic: every prediction and GT is relabelled to one class (NMS too), so
+    the score measures "found the object, box in the right place" with classification
+    taken out -- the gap to the normal mAP is what classification errors cost."""
     model.eval()
     all_preds = []
     all_gts = []
@@ -93,15 +97,21 @@ def evaluate_map(model, dataloader, device, strides, num_classes, conf_thresh=0.
     for images, boxes_list, labels_list in dataloader:
         images = images.to(device)
         preds = model(images)
-        decoded = decode_predictions(preds, strides, conf_thresh=conf_thresh, iou_thresh=iou_thresh)
+        decoded = decode_predictions(preds, strides, conf_thresh=conf_thresh, iou_thresh=iou_thresh,
+                                     class_agnostic_nms=class_agnostic)
         # decoded predictions are on `device` (wherever the model ran); ground truth
         # from the dataloader is always on CPU -- box_iou needs both on the same one
         decoded = [(b.to("cpu"), s.to("cpu"), l.to("cpu")) for b, s, l in decoded]
 
+        if class_agnostic:
+            decoded = [(b, s, torch.zeros_like(l)) for b, s, l in decoded]
+            labels_list = [torch.zeros_like(l) for l in labels_list]
+
         all_preds.extend(decoded)
         all_gts.extend(zip(boxes_list, labels_list))
 
-    return mean_average_precision(all_preds, all_gts, num_classes, iou_thresholds=map_iou_thresholds)
+    n_scored_classes = 1 if class_agnostic else num_classes
+    return mean_average_precision(all_preds, all_gts, n_scored_classes, iou_thresholds=map_iou_thresholds)
 
 
 def save_checkpoint(path, model, optimizer, epoch, extra=None):

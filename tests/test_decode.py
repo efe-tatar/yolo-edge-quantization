@@ -86,6 +86,18 @@ def test_nms_keeps_overlapping_boxes_of_different_classes():
     assert set(labels.tolist()) == {0, 1}
 
 
+def test_class_agnostic_nms_collapses_overlapping_boxes_of_different_classes():
+    box_pred, obj_pred, cls_pred = _make_overlapping_pair(class_a=0, class_b=1)
+
+    results = decode_predictions(
+        [(box_pred, obj_pred, cls_pred)], strides=(8,), conf_thresh=0.3, iou_thresh=0.5,
+        class_agnostic_nms=True,
+    )
+
+    boxes, scores, labels = results[0]
+    assert boxes.shape[0] == 1  # one shared NMS group -> classes no longer protect each other
+
+
 def test_merges_candidates_across_levels():
     box_pred_0, obj_pred_0, cls_pred_0 = make_level(3, 3)
     obj_pred_0[0, 0, 0, 0] = 10.0

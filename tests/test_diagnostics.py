@@ -66,3 +66,26 @@ def test_branch_stats_reads_the_right_cells():
     assert stats["obj_neg_mean"] < 0.02  # sigmoid(-4)
     assert stats["neg_above_pos_median"] == 0.0
     assert abs(stats["cls_top1_acc"] - 1 / 3) < 1e-6  # always predicts class 1; one of 3 GT is class 1
+
+    # GT labels are 0, 1, 2 once each -> any majority is a third
+    assert abs(stats["majority_share"] - 1 / 3) < 1e-6
+    # the classifier collapsed onto class 1
+    assert stats["pred_mode_class"] == 1
+    assert stats["pred_mode_share"] == 1.0
+    assert stats["n_distinct_pred"] == 1
+
+    # FixedHead predicts the target boxes exactly
+    assert abs(stats["box_iou_mean"] - 1.0) < 1e-5
+    assert stats["box_iou>=0.5"] == 1.0
+
+
+def test_paired_iou_is_elementwise():
+    from train.diagnostics import paired_iou
+
+    a = torch.tensor([[0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0]])
+    b = torch.tensor([[0.0, 0.0, 10.0, 10.0], [5.0, 0.0, 15.0, 10.0]])
+
+    iou = paired_iou(a, b)
+    assert iou.shape == (2,)
+    assert abs(iou[0].item() - 1.0) < 1e-6
+    assert abs(iou[1].item() - 50 / 150) < 1e-6  # 5x10 overlap over 100+100-50 union
