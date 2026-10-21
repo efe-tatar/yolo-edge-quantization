@@ -44,8 +44,10 @@ def parse_args():
     parser.add_argument("--no-repeat-sampler", action="store_true",
                          help="use plain shuffling instead of repeat-factor sampling")
 
-    parser.add_argument("--conf-thresh", type=float, default=0.3)
-    parser.add_argument("--iou-thresh", type=float, default=0.5)
+    parser.add_argument("--conf-thresh", type=float, default=0.001,
+                         help="validation mAP's confidence cutoff -- keep it low, mAP already "
+                              "sweeps over confidence (not a deployment threshold)")
+    parser.add_argument("--iou-thresh", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--map-iou-thresholds", type=float, nargs="+", default=[0.5])
 
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
@@ -96,6 +98,7 @@ def main(args):
         tuple(args.strides), args.num_classes, tuple(args.thresholds), args.out_dir,
         val_loader=val_loader, box_weight=args.box_weight, train_sampler=train_sampler,
         map_iou_thresholds=tuple(args.map_iou_thresholds),
+        conf_thresh=args.conf_thresh, iou_thresh=args.iou_thresh,
     )
 
 

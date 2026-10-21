@@ -57,6 +57,17 @@ def test_train_cli_runs_without_repeat_sampler(tmp_path):
     assert os.path.exists(os.path.join(out_dir, "latest.pt"))
 
 
+def test_train_cli_forwards_eval_thresholds(tmp_path, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(train_cli, "train", lambda *a, **kw: captured.update(kw))
+
+    train_cli.main(make_args(make_manifest(tmp_path), str(tmp_path / "runs"),
+                             conf_thresh=0.001, iou_thresh=0.6))
+
+    assert captured["conf_thresh"] == 0.001
+    assert captured["iou_thresh"] == 0.6
+
+
 def test_train_cli_resumes_on_a_second_call(tmp_path):
     manifest_path = make_manifest(tmp_path)
     out_dir = str(tmp_path / "runs")

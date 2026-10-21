@@ -147,6 +147,28 @@ def test_best_map_carries_forward_across_a_resume(tmp_path):
     assert second_state["best_map"] >= first_best  # never regresses across a resume
 
 
+def test_train_forwards_conf_thresh_to_evaluate_map(tmp_path, monkeypatch):
+    import train.trainer as trainer_module
+    seen = []
+
+    def fake_evaluate_map(*args, conf_thresh, iou_thresh, map_iou_thresholds, **kwargs):
+        seen.append((conf_thresh, iou_thresh))
+        return {map_iou_thresholds[0]: 0.0}
+
+    monkeypatch.setattr(trainer_module, "evaluate_map", fake_evaluate_map)
+
+    model = YOLO(NUM_CLASSES)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    batch = make_batch()
+    train(
+        model, [batch], optimizer, "cpu", epochs=1, img_size=IMG_SIZE, strides=STRIDES,
+        num_classes=NUM_CLASSES, thresholds=THRESHOLDS, out_dir=str(tmp_path),
+        val_loader=[batch], conf_thresh=0.005, iou_thresh=0.6,
+    )
+
+    assert seen == [(0.005, 0.6)]
+
+
 def test_train_sampler_set_epoch_is_called_once_per_epoch():
     class StubSampler:
         def __init__(self):

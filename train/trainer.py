@@ -75,12 +75,17 @@ def evaluate_loss(model, dataloader, device, img_size, strides, num_classes, thr
 
 
 @torch.no_grad()
-def evaluate_map(model, dataloader, device, strides, num_classes, conf_thresh=0.3,
+def evaluate_map(model, dataloader, device, strides, num_classes, conf_thresh=0.001,
                   iou_thresh=0.5, map_iou_thresholds=(0.5,)):
     """Runs the model over dataloader, decodes predictions (confidence threshold +
     NMS, same path real inference would use), and scores them against ground truth
     with our own mean_average_precision -- not each framework's own eval, so every
-    number in a cross-model comparison comes from identical matching/AP code."""
+    number in a cross-model comparison comes from identical matching/AP code.
+
+    conf_thresh defaults low on purpose (Ultralytics' val uses 0.001 too): mAP already
+    integrates over every confidence level, so a deployment-style 0.3 cutoff here just
+    truncates the precision/recall curve -- and early in training can drop every true
+    positive, reporting exactly 0.0 for a model that is in fact learning."""
     model.eval()
     all_preds = []
     all_gts = []
@@ -124,7 +129,7 @@ def load_checkpoint(path, model, optimizer=None, device="cpu"):
 
 def train(model, train_loader, optimizer, device, epochs, img_size, strides, num_classes,
           thresholds, out_dir, val_loader=None, box_weight=5.0, log_every=1,
-          train_sampler=None, map_iou_thresholds=(0.5,)):
+          train_sampler=None, map_iou_thresholds=(0.5,), conf_thresh=0.001, iou_thresh=0.5):
     """Resumes automatically from out_dir/latest.pt if it already exists -- Colab
     sessions drop, so every epoch is saved, not just the end. out_dir/best.pt is
     only (re)written when validation mAP@0.5 improves, and holds just the model --
@@ -165,7 +170,8 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
             msg += f" | val total={val_stats['total']:.4f} box={val_stats['box']:.4f} obj={val_stats['obj']:.4f} cls={val_stats['cls']:.4f}"
 
             map_results = evaluate_map(
-                model, val_loader, device, strides, num_classes, map_iou_thresholds=map_iou_thresholds
+                model, val_loader, device, strides, num_classes, conf_thresh=conf_thresh,
+                iou_thresh=iou_thresh, map_iou_thresholds=map_iou_thresholds,
             )
             val_map = map_results[map_iou_thresholds[0]]
             msg += f" | val mAP@{map_iou_thresholds[0]}={val_map:.4f}"
