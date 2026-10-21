@@ -15,15 +15,27 @@ def focal_loss(logits, targets, alpha=0.25, gamma=2.0):
     return (alpha_t * modulating * bce).mean()
 
 
-def yolo_loss(preds, targets, box_weight=5.0, obj_weight=1.0, noobj_weight=0.5, cls_norm="positive"):
+def yolo_loss(preds, targets, box_weight=5.0, obj_weight=1.0, noobj_weight=0.5, cls_norm="positive",
+              obj_norm="balanced"):
     """Multi-scale, multi-class detection loss -- decoupled objectness (YOLOv1-style),
     not the merged cls-is-also-objectness design we started with. That merged design
     needed focal_loss as a patch because a 54-channel classifier was getting a BCE
     term at every one of ~2,100 cells per image, ~99.98% of them negative. Decoupling
     removes classification from facing that imbalance at all: it only ever sees
-    positive cells now. Objectness still faces it, but as a single channel (not 54),
-    plain weighted BCE (noobj_weight < obj_weight) is the classic, long-proven fix
-    there (YOLOv1 through v5 all trained this way, well before focal loss existed).
+    positive cells now. Objectness still faces it, as a single channel (not 54) --
+    see obj_norm for how.
+
+    obj_norm: how positive and negative cells are combined in the obj BCE.
+        "balanced" (default) -- obj_weight * mean over positive cells
+            + noobj_weight * mean over negative cells. Each side averaged on its own,
+            so the positive term's pull doesn't depend on how many empty cells exist.
+        "element" -- one weighted mean over all cells. Our original, YOLOv1's form,
+            kept only for comparison. YOLOv1 had 49 cells per image; we have ~2,100
+            with 1-2 positives, so positives are ~0.05% of that mean and a 0.5
+            noobj_weight can't compensate -- measured on a 64-image overfit test:
+            objectness at true object cells collapsed to a median of ~0.001, and mAP
+            on the memorized images stalled at 0.25 despite 100% cls accuracy and
+            0.87 box IoU.
 
     cls_norm: what the summed cls BCE is divided by.
         "positive" (default) -- the number of positive cells, YOLOv8's normalization.
@@ -44,6 +56,8 @@ def yolo_loss(preds, targets, box_weight=5.0, obj_weight=1.0, noobj_weight=0.5, 
     """
     if cls_norm not in ("positive", "element"):
         raise ValueError(f"cls_norm must be 'positive' or 'element', got {cls_norm!r}")
+    if obj_norm not in ("balanced", "element"):
+        raise ValueError(f"obj_norm must be 'balanced' or 'element', got {obj_norm!r}")
 
     total = 0.0
     obj_loss_sum = 0.0
@@ -51,11 +65,17 @@ def yolo_loss(preds, targets, box_weight=5.0, obj_weight=1.0, noobj_weight=0.5, 
     box_loss_sum = 0.0
 
     for (box_pred, obj_pred, cls_pred), (box_target, obj_target, cls_target) in zip(preds, targets):
-        obj_bce = F.binary_cross_entropy_with_logits(obj_pred, obj_target, reduction="none")
-        weight = torch.where(obj_target > 0, obj_weight, noobj_weight)
-        obj_loss = (obj_bce * weight).mean()
-
         pos_mask = obj_target > 0  # (B,1,H,W) -- ground truth, not the model's own guess
+
+        obj_bce = F.binary_cross_entropy_with_logits(obj_pred, obj_target, reduction="none")
+        if obj_norm == "balanced":
+            # a level with no positives in this batch just has no positive term
+            pos_term = obj_bce[pos_mask].mean() if pos_mask.any() else obj_bce.sum() * 0.0
+            neg_term = obj_bce[~pos_mask].mean() if (~pos_mask).any() else obj_bce.sum() * 0.0
+            obj_loss = obj_weight * pos_term + noobj_weight * neg_term
+        else:
+            weight = torch.where(pos_mask, obj_weight, noobj_weight)
+            obj_loss = (obj_bce * weight).mean()
 
         pos_mask_cls = pos_mask.expand_as(cls_pred)
         if pos_mask_cls.any():

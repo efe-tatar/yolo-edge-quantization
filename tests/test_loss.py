@@ -92,6 +92,61 @@ def test_cls_norm_rejects_unknown_values():
         yolo_loss(preds, targets, cls_norm="mean")
 
 
+def _obj_only(obj_pred, obj_target):
+    """Zero box/cls so only the obj term varies between calls."""
+    _, _, h, w = obj_pred.shape
+    box = torch.zeros(1, 4, h, w)
+    cls = torch.zeros(1, 1, h, w)
+    return [(box, obj_pred, cls)], [(box, obj_target, cls)]
+
+
+def test_balanced_obj_loss_matches_hand_computation():
+    import torch.nn.functional as F
+    obj_pred = torch.tensor([[[[2.0, -1.0, 0.5, -3.0]]]])
+    obj_target = torch.tensor([[[[1.0, 0.0, 0.0, 0.0]]]])
+    preds, targets = _obj_only(obj_pred, obj_target)
+
+    bce = F.binary_cross_entropy_with_logits(obj_pred, obj_target, reduction="none").flatten()
+    expected = 1.0 * bce[0] + 0.5 * bce[1:].mean()
+
+    out = yolo_loss(preds, targets, obj_weight=1.0, noobj_weight=0.5, obj_norm="balanced")
+    assert abs(out["obj"].item() - expected.item()) < 1e-6
+
+
+def test_balanced_obj_loss_does_not_dilute_positives_with_more_empty_cells():
+    # the same positive + identical negatives, once with 3 empty cells, once with 300.
+    # What matters is the gradient pushing the positive's logit up: under "element" it
+    # shrinks ~1/num_cells as the grid grows (the bug), under "balanced" it doesn't move
+    def positive_grad(n_neg, obj_norm):
+        obj_pred = torch.full((1, 1, 1, n_neg + 1), -2.0)
+        obj_pred[0, 0, 0, 0] = 0.0
+        obj_pred.requires_grad_(True)
+        obj_target = torch.zeros_like(obj_pred)
+        obj_target[0, 0, 0, 0] = 1.0
+        preds, targets = _obj_only(obj_pred, obj_target)
+        yolo_loss(preds, targets, obj_norm=obj_norm)["total"].backward()  # "obj" is detached (logging only)
+        return obj_pred.grad[0, 0, 0, 0].abs().item()
+
+    assert abs(positive_grad(3, "balanced") - positive_grad(300, "balanced")) < 1e-6
+    assert positive_grad(300, "element") < positive_grad(3, "element") / 50
+
+
+def test_balanced_obj_loss_handles_a_level_with_no_positives():
+    obj_pred = torch.tensor([[[[-1.0, 1.0]]]])
+    obj_target = torch.zeros_like(obj_pred)
+    preds, targets = _obj_only(obj_pred, obj_target)
+
+    out = yolo_loss(preds, targets, obj_norm="balanced")
+    assert torch.isfinite(out["obj"]) and out["obj"].item() > 0
+
+
+def test_obj_norm_rejects_unknown_values():
+    import pytest
+    preds, targets = _obj_only(torch.zeros(1, 1, 1, 2), torch.zeros(1, 1, 1, 2))
+    with pytest.raises(ValueError):
+        yolo_loss(preds, targets, obj_norm="mean")
+
+
 def test_obj_loss_applies_noobj_weight_to_negative_cells():
     # same raw BCE magnitude at both cells (same logit, opposite target) -- a smaller
     # noobj_weight should shrink the negative cell's contribution to the average
