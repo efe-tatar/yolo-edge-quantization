@@ -50,6 +50,48 @@ def test_cls_loss_ignores_negative_cells_entirely():
     assert out["cls"].item() < 1e-2
 
 
+def _two_positive_cells(num_classes=3):
+    """2 positive cells + 1 negative, random cls logits -- no exact zeros anywhere."""
+    torch.manual_seed(0)
+    box = torch.zeros(1, 4, 1, 3)
+    obj_target = torch.tensor([[[[1.0, 1.0, 0.0]]]])
+    cls_pred = torch.randn(1, num_classes, 1, 3)
+    cls_target = torch.zeros(1, num_classes, 1, 3)
+    cls_target[0, 0, 0, 0] = 1.0
+    cls_target[0, 1, 0, 1] = 1.0
+    return [(box, torch.zeros_like(obj_target), cls_pred)], [(box, obj_target, cls_target)]
+
+
+def test_cls_loss_per_positive_is_num_classes_times_per_element():
+    preds, targets = _two_positive_cells(num_classes=3)
+
+    per_positive = yolo_loss(preds, targets, cls_norm="positive")["cls"].item()
+    per_element = yolo_loss(preds, targets, cls_norm="element")["cls"].item()
+
+    assert abs(per_positive - 3 * per_element) < 1e-5
+
+
+def test_cls_loss_per_positive_matches_hand_computation():
+    import torch.nn.functional as F
+    preds, targets = _two_positive_cells(num_classes=3)
+    cls_pred, cls_target = preds[0][2], targets[0][2]
+
+    # sum the BCE over every class at each positive cell, then average over the 2 cells
+    expected = sum(
+        F.binary_cross_entropy_with_logits(cls_pred[0, :, 0, i], cls_target[0, :, 0, i], reduction="sum")
+        for i in (0, 1)
+    ) / 2
+
+    assert abs(yolo_loss(preds, targets)["cls"].item() - expected.item()) < 1e-5
+
+
+def test_cls_norm_rejects_unknown_values():
+    import pytest
+    preds, targets = _two_positive_cells()
+    with pytest.raises(ValueError):
+        yolo_loss(preds, targets, cls_norm="mean")
+
+
 def test_obj_loss_applies_noobj_weight_to_negative_cells():
     # same raw BCE magnitude at both cells (same logit, opposite target) -- a smaller
     # noobj_weight should shrink the negative cell's contribution to the average
