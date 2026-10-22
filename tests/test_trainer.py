@@ -195,6 +195,44 @@ def test_train_forwards_conf_thresh_to_evaluate_map(tmp_path, monkeypatch):
     assert seen == [(0.005, 0.6)]
 
 
+def test_lr_schedule_is_applied_per_batch():
+    model = YOLO(NUM_CLASSES)
+    optimizer = torch.optim.Adam(model.parameters(), lr=123.0)  # overwritten by the schedule
+    seen = []
+
+    def lr_at(t):
+        seen.append(t)
+        return 1e-4 * (1 + t)
+
+    train_one_epoch(model, [make_batch(), make_batch()], optimizer, "cpu", IMG_SIZE, STRIDES,
+                    NUM_CLASSES, THRESHOLDS, lr_schedule=lr_at, epoch=3)
+
+    assert seen == [3.0, 3.5]  # fractional epoch, one call per batch
+    assert optimizer.param_groups[0]["lr"] == 1e-4 * 4.5
+
+
+def test_train_writes_a_timed_log_file(tmp_path):
+    model = YOLO(NUM_CLASSES)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    batch = make_batch()
+
+    train(
+        model, [batch], optimizer, "cpu", epochs=2, img_size=IMG_SIZE, strides=STRIDES,
+        num_classes=NUM_CLASSES, thresholds=THRESHOLDS, out_dir=str(tmp_path), val_loader=[batch],
+    )
+    train(  # resume: appends to the same log, doesn't overwrite it
+        model, [batch], optimizer, "cpu", epochs=3, img_size=IMG_SIZE, strides=STRIDES,
+        num_classes=NUM_CLASSES, thresholds=THRESHOLDS, out_dir=str(tmp_path), val_loader=[batch],
+    )
+
+    lines = (tmp_path / "train_log.txt").read_text().splitlines()
+    epoch_lines = [l for l in lines if l.startswith("epoch")]
+    assert [l.split(":")[0] for l in epoch_lines] == ["epoch 0", "epoch 1", "epoch 2"]
+    assert any(l.startswith("resumed from") for l in lines)
+    for line in epoch_lines:
+        assert "time train=" in line and "map=" in line and "eta=" in line and "lr=" in line
+
+
 def test_train_sampler_set_epoch_is_called_once_per_epoch():
     class StubSampler:
         def __init__(self):

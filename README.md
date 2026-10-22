@@ -3,8 +3,11 @@
 A YOLO-style object detector, built from scratch in PyTorch, trained on a real
 traffic-sign dataset, then quantized and benchmarked for CPU/edge deployment.
 
-**Status: in progress.** Architecture, training pipeline, and dataset handling are
-built and tested. No model has been trained yet -- see [Roadmap](#roadmap).
+**Status: in progress.** The first model is trained end to end: **val mAP@0.5 =
+0.156**, from scratch, 50 epochs, no augmentation -- a baseline, not a final number.
+Getting there took fixing three bugs that kept mAP at exactly 0 (see
+[Debugging the first runs](#debugging-the-first-runs)). Next: fixing the overfitting
+this run shows -- see [Roadmap](#roadmap).
 
 ## Goal
 
@@ -25,14 +28,14 @@ Runtime, FP32 vs FP16 vs PTQ INT8 vs QAT INT8) on CPU.
 
 ## Architecture
 
-Single-class-agnostic, multi-scale, anchor-free detector in the YOLOv8 family:
+Multi-class, multi-scale, anchor-free detector in the YOLOv8 family:
 
 ```
 image --> Backbone --> P3, P4, P5 (strides 8/16/32)
                  \
                   --> Neck (FPN top-down + PAN bottom-up) --> 3 refined feature maps
                                   \
-                                   --> Head x3 (one per scale) --> (box, cls) per cell
+                                   --> Head x3 (one per scale) --> (box, obj, cls) per cell
 ```
 
 - **Backbone**: stride-2 `Conv` + `C2f` blocks, channel-doubling on every downsample,
@@ -47,6 +50,14 @@ image --> Backbone --> P3, P4, P5 (strides 8/16/32)
   practice this didn't converge within budget, so objectness was decoupled back out
   (YOLOv1-v5 style) -- classification loss is now computed only at positive cells,
   removing it from facing that imbalance at all, rather than just reweighting it.
+  Caveat: the merged design was judged with an evaluation bug in place (bug 1 below),
+  so it was never given a fair comparison.
+- **Loss**: L1 box loss at positive cells; classification BCE summed over classes and
+  normalized per positive cell; objectness BCE with positive and empty cells averaged
+  separately. Both normalizations are fixes, explained in
+  [Debugging the first runs](#debugging-the-first-runs).
+- **Decode**: score = `sigmoid(obj) * max(sigmoid(cls))`, then per-class (or
+  class-agnostic) NMS.
 - **Target assignment**: FCOS-style static size-range routing (a box goes to the
   scale whose stride best matches its size), stride-normalized regression targets,
   smallest-box-wins on cell collisions.
@@ -54,13 +65,16 @@ image --> Backbone --> P3, P4, P5 (strides 8/16/32)
 ## Repo structure
 
 ```
-models/   Conv, Bottleneck, C2f, SPPF, Backbone, Neck, Head, YOLO
-train/    target assignment, loss, inference decode + NMS, mAP, training loop
-data/     dataset-agnostic: COCO-format pooling/redistribution/manifest, Dataset
-colab/    dataset exploration/diagnostics (the only place that knows this is
-          Roboflow's traffic-sign dataset specifically -- everything above is
-          dataset-agnostic by design)
-tests/    pytest, 65+ tests, every module above
+models/    Conv, Bottleneck, C2f, SPPF, Backbone, Neck, Head, YOLO
+train/     target assignment, loss, inference decode + NMS, mAP, training loop,
+           per-branch diagnostics
+data/      dataset-agnostic: COCO-format pooling/redistribution/manifest, Dataset
+colab/     dataset split, training, and debugging notebooks (the only place that
+           knows this is Roboflow's traffic-sign dataset specifically -- everything
+           above is dataset-agnostic by design)
+results/   per-run metrics, logs and prediction images; the debugging write-up
+tests/     pytest, 100 tests, every module above
+train_model.py / export_model.py   training and ONNX export CLIs
 ```
 
 ## Dataset
@@ -70,6 +84,64 @@ tests/    pytest, 65+ tests, every module above
 `data/coco_split.py` redistributes it photo-by-photo, rarest class first, 70/15/15 --
 keeping every class (forced train-only below a minimum-photo threshold) rather than
 dropping rare ones outright. See `colab/dataset_split.ipynb` for the full diagnostic.
+
+## Debugging the first runs
+
+Every early run reported val mAP@0.5 = 0.0000 while all losses kept falling. Three
+separate bugs were behind it. Each was found by measuring one branch of the head in
+isolation (`train/diagnostics.py`, class-agnostic mAP), and each fix was confirmed by
+an experiment where it was the only change. Full numbers and plots:
+[results/debugging](results/debugging/README.md).
+
+1. **The evaluation threshold hid real detections.** Predictions were filtered at
+   confidence 0.3 before computing mAP, and early in training every true positive
+   scored below that. At 0.001, the same checkpoint scored 0.005 mAP -- and **0.265
+   class-agnostic mAP**: boxes were already good, classes weren't.
+2. **The classification loss was scaled down 54x.** BCE averaged over (positive cells
+   x 54 classes) gave the correct class 1/54 of a gradient. The classifier collapsed
+   onto the most frequent class (59% of predictions for a class that's 12.5% of
+   objects), equally on train and val. Normalizing per positive cell (as YOLOv8 does)
+   took top-1 on a 64-image overfit test from 0.30 to 1.00.
+3. **Objectness was drowned by empty cells.** One mean over ~2,100 cells per image,
+   1-2 of them positive, pushed objectness to ~0 everywhere (median 0.002 at real
+   objects). Averaging positive and empty cells separately took the overfit test's
+   mAP from 0.26 to **0.97**.
+
+Bugs 2 and 3 are the same mistake: averaging a loss over many elements when only a
+few of them carry the signal.
+
+## Results
+
+### Run 1: baseline
+
+From scratch, 320px input, 50 epochs, Adam at a constant 1e-3, no augmentation.
+Details, config and full log: [results/run01_baseline](results/run01_baseline/README.md).
+
+| metric | value |
+|---|---|
+| best val mAP@0.5 | **0.156** (epoch 46) |
+| final val mAP@0.5 | 0.127 (epoch 49) |
+
+![run 1 predictions on test images](results/run01_baseline/test_predictions.png)
+
+*Test images, conf 0.3. Green: ground truth. Red: predictions.*
+
+What this run shows:
+
+- **Classification overfits.** Val cls loss is lowest at epoch 18, then rises while
+  train cls loss keeps falling ~10x; val mAP plateaus from epoch ~28. Box loss keeps
+  improving on val: localization generalizes, classification doesn't.
+- **Several boxes per sign, and stray boxes.** Only one cell per object is trained,
+  so neighbouring cells fire with their own class guesses (surviving per-class NMS)
+  and untrained box outputs.
+- **Loss spikes** at epochs 29 and 48, from a constant learning rate.
+
+For scale: a COCO-pretrained YOLOv8n fine-tuned on this dataset in an earlier
+project reached 0.79 mAP@0.5 -- with pretraining, Ultralytics' default training
+recipe (augmentation included) and a different split, so it's a ceiling, not a
+like-for-like comparison. The fair
+comparison is YOLOv8n trained from scratch under this repo's settings (see
+[Goal](#goal)).
 
 ## Running the tests
 
@@ -86,7 +158,10 @@ python -m pytest tests/ -v
 - [x] Repeat-factor sampling (class imbalance is still severe even after the
       stratified split -- this is a training-time fix, not a splitting one)
 - [x] ONNX export with a PyTorch-parity check
-- [ ] A real training run
+- [x] Per-branch diagnostics; fixed eval threshold, cls and obj loss normalization
+- [x] A real training run (baseline: val mAP@0.5 0.156)
+- [ ] Augmentation (box-aware, no horizontal flips) + LR schedule
+- [ ] Center sampling (several positive cells per object)
 - [ ] Reference YOLOv8n baselines (from-scratch and pretrained)
 - [ ] Three-way comparison
 - [ ] Quantization (PTQ, QAT)

@@ -1,0 +1,48 @@
+# run01_baseline -- train_model.py stdout, as captured from Colab.
+# The run was resumed across Colab sessions (latest.pt is saved every epoch);
+# epochs 7-12 were trained but their log lines were not kept.
+epoch 0: train total=35.4216 box=1.5812 obj=1.5647 cls=25.9510 | val total=25.2007 box=1.2580 obj=1.3294 cls=17.5813 | val mAP@0.5=0.0000
+epoch 1: train total=19.1822 box=1.0689 obj=1.0275 cls=12.8103 | val total=20.2788 box=1.1452 obj=1.7973 cls=12.7557 | val mAP@0.5=0.0021
+epoch 2: train total=17.7136 box=1.0242 obj=0.9256 cls=11.6672 | val total=23.5776 box=1.2443 obj=1.3554 cls=16.0009 | val mAP@0.5=0.0029
+epoch 3: train total=15.7569 box=0.9590 obj=0.7759 cls=10.1861 | val total=16.6166 box=0.9458 obj=0.8696 cls=11.0179 | val mAP@0.5=0.0127
+epoch 4: train total=14.0883 box=0.8732 obj=0.6815 cls=9.0406 | val total=15.5293 box=0.9411 obj=0.8449 cls=9.9791 | val mAP@0.5=0.0233
+epoch 5: train total=13.1925 box=0.8308 obj=0.6219 cls=8.4166 | val total=18.0442 box=0.9767 obj=0.7763 cls=12.3843 | val mAP@0.5=0.0304
+epoch 6: train total=12.0035 box=0.7939 obj=0.5479 cls=7.4861 | val total=15.4852 box=0.8747 obj=0.7768 cls=10.3348 | val mAP@0.5=0.0456
+resumed from /content/drive/MyDrive/yolo-edge-quantization/own_model/latest.pt, starting at epoch 13
+epoch 13: train total=7.4134 box=0.6202 obj=0.3372 cls=3.9752 | val total=14.4279 box=0.8110 obj=0.8451 cls=9.5280 | val mAP@0.5=0.0971
+epoch 14: train total=6.8903 box=0.6061 obj=0.3121 cls=3.5477 | val total=16.6419 box=0.8653 obj=0.8731 cls=11.4424 | val mAP@0.5=0.1108
+epoch 15: train total=6.3838 box=0.6015 obj=0.2704 cls=3.1061 | val total=14.3884 box=0.7605 obj=0.8017 cls=9.7843 | val mAP@0.5=0.1028
+epoch 16: train total=6.0418 box=0.5857 obj=0.2917 cls=2.8214 | val total=14.0455 box=0.8170 obj=0.6210 cls=9.3393 | val mAP@0.5=0.0990
+epoch 17: train total=5.5113 box=0.5729 obj=0.2491 cls=2.3977 | val total=14.1315 box=0.7682 obj=0.8173 cls=9.4730 | val mAP@0.5=0.1138
+epoch 18: train total=4.8488 box=0.5254 obj=0.2427 cls=1.9792 | val total=12.5746 box=0.6877 obj=0.7802 cls=8.3557 | val mAP@0.5=0.1157
+epoch 19: train total=4.6111 box=0.5429 obj=0.2198 cls=1.6767 | val total=15.8432 box=0.7761 obj=0.8943 cls=11.0683 | val mAP@0.5=0.1094
+epoch 20: train total=4.3973 box=0.5207 obj=0.2151 cls=1.5786 | val total=13.5719 box=0.7309 obj=0.8357 cls=9.0817 | val mAP@0.5=0.1158
+epoch 21: train total=4.0900 box=0.5116 obj=0.1918 cls=1.3404 | val total=13.1751 box=0.6822 obj=0.9417 cls=8.8223 | val mAP@0.5=0.1183
+epoch 22: train total=3.8039 box=0.4871 obj=0.1906 cls=1.1779 | val total=15.2976 box=0.7185 obj=0.7886 cls=10.9166 | val mAP@0.5=0.1293
+epoch 23: train total=4.0746 box=0.5339 obj=0.2098 cls=1.1952 | val total=14.2577 box=0.7017 obj=1.3308 cls=9.4184 | val mAP@0.5=0.1096
+epoch 24: train total=4.0775 box=0.5177 obj=0.2677 cls=1.2215 | val total=16.9534 box=0.8198 obj=0.9156 cls=11.9390 | val mAP@0.5=0.1077
+epoch 25: train total=3.7576 box=0.5009 obj=0.1995 cls=1.0535 | val total=18.1833 box=0.8022 obj=1.0810 cls=13.0913 | val mAP@0.5=0.1163
+epoch 26: train total=3.3485 box=0.4879 obj=0.1683 cls=0.7408 | val total=18.3962 box=0.7924 obj=0.7786 cls=13.6554 | val mAP@0.5=0.1378
+epoch 27: train total=2.9583 box=0.4537 obj=0.1559 cls=0.5339 | val total=15.3057 box=0.7232 obj=0.8713 cls=10.8182 | val mAP@0.5=0.1302
+epoch 28: train total=2.7951 box=0.4321 obj=0.1377 cls=0.4967 | val total=17.9251 box=0.7671 obj=1.0971 cls=12.9924 | val mAP@0.5=0.1504
+epoch 29: train total=5.1254 box=0.5251 obj=0.2639 cls=2.2358 | val total=22.1994 box=0.9150 obj=1.1114 cls=16.5128 | val mAP@0.5=0.1261
+epoch 30: train total=3.4158 box=0.4587 obj=0.1885 cls=0.9337 | val total=19.6452 box=0.8132 obj=1.0461 cls=14.5330 | val mAP@0.5=0.1267
+epoch 31: train total=2.8302 box=0.4366 obj=0.1401 cls=0.5071 | val total=15.2873 box=0.7073 obj=0.8019 cls=10.9487 | val mAP@0.5=0.1358
+epoch 32: train total=2.5440 box=0.4178 obj=0.1213 cls=0.3334 | val total=14.5075 box=0.6551 obj=1.0242 cls=10.2078 | val mAP@0.5=0.1467
+epoch 33: train total=2.4414 box=0.4109 obj=0.1207 cls=0.2662 | val total=15.3099 box=0.6687 obj=0.9283 cls=11.0378 | val mAP@0.5=0.1331
+epoch 34: train total=2.4616 box=0.4018 obj=0.1152 cls=0.3376 | val total=14.8362 box=0.6462 obj=1.0103 cls=10.5949 | val mAP@0.5=0.1333
+epoch 35: train total=2.3914 box=0.3871 obj=0.1184 cls=0.3376 | val total=14.9492 box=0.6760 obj=1.0925 cls=10.4767 | val mAP@0.5=0.1321
+epoch 36: train total=2.2520 box=0.3802 obj=0.1036 cls=0.2476 | val total=15.1539 box=0.6377 obj=1.0527 cls=10.9126 | val mAP@0.5=0.1418
+epoch 37: train total=2.1976 box=0.3741 obj=0.0996 cls=0.2273 | val total=14.8521 box=0.6427 obj=1.1576 cls=10.4812 | val mAP@0.5=0.1438
+epoch 38: train total=2.2350 box=0.3803 obj=0.0974 cls=0.2361 | val total=24.8707 box=0.8895 obj=1.3432 cls=19.0800 | val mAP@0.5=0.1433
+epoch 39: train total=2.2941 box=0.3799 obj=0.1015 cls=0.2932 | val total=15.5612 box=0.6393 obj=1.1174 cls=11.2474 | val mAP@0.5=0.1410
+epoch 40: train total=2.3729 box=0.3905 obj=0.1089 cls=0.3112 | val total=15.3823 box=0.6052 obj=1.1220 cls=11.2344 | val mAP@0.5=0.1266
+epoch 41: train total=2.1753 box=0.3597 obj=0.1034 cls=0.2734 | val total=15.7280 box=0.6377 obj=1.0252 cls=11.5142 | val mAP@0.5=0.1337
+epoch 42: train total=2.1253 box=0.3603 obj=0.0929 cls=0.2309 | val total=15.6405 box=0.6471 obj=1.2552 cls=11.1499 | val mAP@0.5=0.1524
+epoch 43: train total=2.1266 box=0.3581 obj=0.0919 cls=0.2445 | val total=17.3207 box=0.7314 obj=0.9863 cls=12.6775 | val mAP@0.5=0.1413
+epoch 44: train total=2.0703 box=0.3490 obj=0.0944 cls=0.2311 | val total=15.3410 box=0.6088 obj=1.1935 cls=11.1038 | val mAP@0.5=0.1319
+epoch 45: train total=2.0850 box=0.3509 obj=0.0911 cls=0.2393 | val total=15.3659 box=0.6382 obj=1.1443 cls=11.0304 | val mAP@0.5=0.1482
+epoch 46: train total=2.0807 box=0.3448 obj=0.1231 cls=0.2335 | val total=16.2579 box=0.6120 obj=1.6029 cls=11.5952 | val mAP@0.5=0.1559
+epoch 47: train total=2.1304 box=0.3542 obj=0.0932 cls=0.2665 | val total=15.9032 box=0.6229 obj=1.4554 cls=11.3331 | val mAP@0.5=0.1416
+epoch 48: train total=2.6919 box=0.3767 obj=0.1383 cls=0.6701 | val total=15.8640 box=0.6231 obj=0.9982 cls=11.7504 | val mAP@0.5=0.1261
+epoch 49: train total=2.5507 box=0.3661 obj=0.1302 cls=0.5901 | val total=16.8074 box=0.6760 obj=1.0219 cls=12.4056 | val mAP@0.5=0.1270

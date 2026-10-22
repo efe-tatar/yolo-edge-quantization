@@ -1,4 +1,5 @@
 import os
+import time
 
 import torch
 
@@ -9,15 +10,24 @@ from train.metrics import mean_average_precision
 
 
 def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num_classes,
-                     thresholds, box_weight=5.0):
+                     thresholds, box_weight=5.0, lr_schedule=None, epoch=0):
     """One pass over dataloader. Yields (images, boxes_list, labels_list) per batch,
     where boxes_list/labels_list are length-B lists of per-image (ragged) tensors --
-    the same contract as data/dataset.py's collate_fn."""
+    the same contract as data/dataset.py's collate_fn.
+
+    lr_schedule: optional lr_at(t) (see train/schedule.py), t = fractional epoch --
+    applied before every batch, so warmup is smooth rather than per-epoch steps."""
     model.train()
     totals = {"total": 0.0, "box": 0.0, "obj": 0.0, "cls": 0.0}
     n_batches = 0
+    batches_per_epoch = len(dataloader)
 
     for images, boxes_list, labels_list in dataloader:
+        if lr_schedule is not None:
+            lr = lr_schedule(epoch + n_batches / batches_per_epoch)
+            for group in optimizer.param_groups:
+                group["lr"] = lr
+
         images = images.to(device)
         boxes_list = [b.to(device) for b in boxes_list]
         labels_list = [l.to(device) for l in labels_list]
@@ -137,21 +147,39 @@ def load_checkpoint(path, model, optimizer=None, device="cpu"):
     return state
 
 
+def _hms(seconds):
+    seconds = int(seconds)
+    return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m{seconds % 60:02d}s"
+
+
 def train(model, train_loader, optimizer, device, epochs, img_size, strides, num_classes,
           thresholds, out_dir, val_loader=None, box_weight=5.0, log_every=1,
-          train_sampler=None, map_iou_thresholds=(0.5,), conf_thresh=0.001, iou_thresh=0.5):
+          train_sampler=None, map_iou_thresholds=(0.5,), conf_thresh=0.001, iou_thresh=0.5,
+          lr_schedule=None):
     """Resumes automatically from out_dir/latest.pt if it already exists -- Colab
     sessions drop, so every epoch is saved, not just the end. out_dir/best.pt is
     only (re)written when validation mAP@0.5 improves, and holds just the model --
     latest.pt holds model+optimizer+epoch for exact resume.
 
+    Every log line is also appended to out_dir/train_log.txt, so the full history
+    survives a dropped session (stdout doesn't). Each epoch line ends with the time
+    spent in training, val loss and val mAP -- shows where an epoch's time goes, e.g.
+    whether a faster GPU would help at all -- plus elapsed time and an ETA.
+
     train_sampler: pass the RepeatFactorSampler instance (not just the DataLoader
     wrapping it) so its set_epoch can be called -- PyTorch never does this for you.
+    lr_schedule: optional lr_at(t), see train/schedule.py and train_one_epoch.
     """
     model.to(device)
     os.makedirs(out_dir, exist_ok=True)
     latest_path = os.path.join(out_dir, "latest.pt")
     best_path = os.path.join(out_dir, "best.pt")
+    log_path = os.path.join(out_dir, "train_log.txt")
+
+    def log(line):
+        print(line)
+        with open(log_path, "a") as f:
+            f.write(line + "\n")
 
     start_epoch = 0
     best_map = -1.0
@@ -160,34 +188,51 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
         state = load_checkpoint(latest_path, model, optimizer, device)
         start_epoch = state["epoch"] + 1
         best_map = state.get("best_map", -1.0)
-        print(f"resumed from {latest_path}, starting at epoch {start_epoch}")
+        log(f"resumed from {latest_path}, starting at epoch {start_epoch}")
+
+    run_start = time.perf_counter()
 
     for epoch in range(start_epoch, epochs):
         if train_sampler is not None:
             train_sampler.set_epoch(epoch)
 
+        t0 = time.perf_counter()
         train_stats = train_one_epoch(
             model, train_loader, optimizer, device, img_size, strides, num_classes,
-            thresholds, box_weight,
+            thresholds, box_weight, lr_schedule=lr_schedule, epoch=epoch,
         )
+        times = {"train": time.perf_counter() - t0}
         msg = f"epoch {epoch}: train total={train_stats['total']:.4f} box={train_stats['box']:.4f} obj={train_stats['obj']:.4f} cls={train_stats['cls']:.4f}"
+        msg += f" lr={optimizer.param_groups[0]['lr']:.2e}"
 
         val_map = None
         if val_loader is not None:
+            t0 = time.perf_counter()
             val_stats = evaluate_loss(
                 model, val_loader, device, img_size, strides, num_classes, thresholds, box_weight
             )
+            times["val"] = time.perf_counter() - t0
             msg += f" | val total={val_stats['total']:.4f} box={val_stats['box']:.4f} obj={val_stats['obj']:.4f} cls={val_stats['cls']:.4f}"
 
+            t0 = time.perf_counter()
             map_results = evaluate_map(
                 model, val_loader, device, strides, num_classes, conf_thresh=conf_thresh,
                 iou_thresh=iou_thresh, map_iou_thresholds=map_iou_thresholds,
             )
+            times["map"] = time.perf_counter() - t0
             val_map = map_results[map_iou_thresholds[0]]
             msg += f" | val mAP@{map_iou_thresholds[0]}={val_map:.4f}"
 
+        # ETA from this session's epochs only -- a resumed run's earlier epochs may
+        # have been on different hardware
+        elapsed = time.perf_counter() - run_start
+        epochs_done = epoch - start_epoch + 1
+        eta = elapsed / epochs_done * (epochs - epoch - 1)
+        msg += " | time " + " ".join(f"{k}={v:.0f}s" for k, v in times.items())
+        msg += f" epoch={sum(times.values()):.0f}s elapsed={_hms(elapsed)} eta={_hms(eta)}"
+
         if epoch % log_every == 0:
-            print(msg)
+            log(msg)
 
         save_checkpoint(latest_path, model, optimizer, epoch, extra={"best_map": best_map})
 
