@@ -3,11 +3,11 @@
 A YOLO-style object detector, built from scratch in PyTorch, trained on a real
 traffic-sign dataset, then quantized and benchmarked for CPU/edge deployment.
 
-**Status: in progress.** The first model is trained end to end: **val mAP@0.5 =
-0.156**, from scratch, 50 epochs, no augmentation -- a baseline, not a final number.
-Getting there took fixing three bugs that kept mAP at exactly 0 (see
-[Debugging the first runs](#debugging-the-first-runs)). Next: fixing the overfitting
-this run shows -- see [Roadmap](#roadmap).
+**Status: in progress.** Current best: **val mAP@0.5 = 0.254**, trained from scratch
+for 50 epochs (run02: augmentation + LR schedule, up from 0.156 without). Getting a
+first working model took fixing three bugs that kept mAP at exactly 0 (see
+[Debugging the first runs](#debugging-the-first-runs)). Next: center sampling and
+longer training -- see [Roadmap](#roadmap).
 
 ## Goal
 
@@ -73,7 +73,7 @@ colab/     dataset split, training, and debugging notebooks (the only place that
            knows this is Roboflow's traffic-sign dataset specifically -- everything
            above is dataset-agnostic by design)
 results/   per-run metrics, logs and prediction images; the debugging write-up
-tests/     pytest, 100 tests, every module above
+tests/     pytest, 101 tests, every module above
 train_model.py / export_model.py   training and ONNX export CLIs
 ```
 
@@ -112,6 +112,14 @@ few of them carry the signal.
 
 ## Results
 
+All runs: this repo's model, trained from scratch, 320px input, 50 epochs, same data
+split, scored with this repo's own mAP code on the val split.
+
+| run | change | best val mAP@0.5 |
+|---|---|---|
+| [run01_baseline](results/run01_baseline/README.md) | -- | 0.156 |
+| [run02_augment](results/run02_augment/README.md) | + augmentation, AdamW, warmup + cosine LR | **0.254** |
+
 ### Run 1: baseline
 
 From scratch, 320px input, 50 epochs, Adam at a constant 1e-3, no augmentation.
@@ -136,12 +144,36 @@ What this run shows:
   and untrained box outputs.
 - **Loss spikes** at epochs 29 and 48, from a constant learning rate.
 
+### Run 2: augmentation + LR schedule
+
+Targets run 1's overfitting and spikes: random scale/shift with boxes moved along
+(no flips -- they would swap left/right signs), colour jitter, AdamW with weight
+decay, and warmup + cosine decay. Details: [results/run02_augment](results/run02_augment/README.md).
+
+| metric | run 1 | run 2 |
+|---|---|---|
+| best val mAP@0.5 | 0.156 | **0.254** |
+| val cls loss | rises after epoch 18 | falls all run (31.1 -> 5.46) |
+
+![run 2 predictions on test images](results/run02_augment/conf07.png)
+
+*Same test images, conf 0.7. Green: ground truth. Red: predictions.*
+
+What this run shows:
+
+- **The overfitting is gone**, and val mAP was still rising when the learning rate
+  bottomed out: the model is now under-trained, not over-fitted.
+- **Classes are mostly right** at high confidence, where run 1 mostly got them wrong.
+- **Stacked duplicate boxes remain** (bottom-right) -- the one-cell-per-object
+  assignment, next on the list.
+- **Val mAP took ~40% of each epoch's time** (pure-Python, CPU). It now runs every
+  5 epochs by default.
+
 For scale: a COCO-pretrained YOLOv8n fine-tuned on this dataset in an earlier
 project reached 0.79 mAP@0.5 -- with pretraining, Ultralytics' default training
 recipe (augmentation included) and a different split, so it's a ceiling, not a
-like-for-like comparison. The fair
-comparison is YOLOv8n trained from scratch under this repo's settings (see
-[Goal](#goal)).
+like-for-like comparison. The fair comparison is YOLOv8n trained from scratch under
+this repo's settings (see [Goal](#goal)).
 
 ## Running the tests
 
@@ -160,7 +192,7 @@ python -m pytest tests/ -v
 - [x] ONNX export with a PyTorch-parity check
 - [x] Per-branch diagnostics; fixed eval threshold, cls and obj loss normalization
 - [x] A real training run (baseline: val mAP@0.5 0.156)
-- [ ] Augmentation (box-aware, no horizontal flips) + LR schedule
+- [x] Augmentation (box-aware, no horizontal flips) + LR schedule (val mAP@0.5 0.254)
 - [ ] Center sampling (several positive cells per object)
 - [ ] Reference YOLOv8n baselines (from-scratch and pretrained)
 - [ ] Three-way comparison

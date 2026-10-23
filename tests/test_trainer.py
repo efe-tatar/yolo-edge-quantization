@@ -233,6 +233,33 @@ def test_train_writes_a_timed_log_file(tmp_path):
         assert "time train=" in line and "map=" in line and "eta=" in line and "lr=" in line
 
 
+def test_map_every_skips_epochs_but_always_runs_the_last(tmp_path, monkeypatch):
+    import train.trainer as trainer_module
+    calls = []
+    real_evaluate_map = trainer_module.evaluate_map
+
+    def counting_evaluate_map(*args, **kwargs):
+        calls.append(1)
+        return real_evaluate_map(*args, **kwargs)
+
+    monkeypatch.setattr(trainer_module, "evaluate_map", counting_evaluate_map)
+
+    model = YOLO(NUM_CLASSES)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    batch = make_batch()
+    train(
+        model, [batch], optimizer, "cpu", epochs=7, img_size=IMG_SIZE, strides=STRIDES,
+        num_classes=NUM_CLASSES, thresholds=THRESHOLDS, out_dir=str(tmp_path),
+        val_loader=[batch], map_every=3,
+    )
+
+    lines = [l for l in (tmp_path / "train_log.txt").read_text().splitlines() if l.startswith("epoch")]
+    with_map = [l.split(":")[0] for l in lines if "mAP@" in l]
+    assert with_map == ["epoch 2", "epoch 5", "epoch 6"]  # every 3rd, plus the last
+    assert len(calls) == 3
+    assert (tmp_path / "best.pt").exists()
+
+
 def test_train_sampler_set_epoch_is_called_once_per_epoch():
     class StubSampler:
         def __init__(self):

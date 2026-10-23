@@ -155,7 +155,7 @@ def _hms(seconds):
 def train(model, train_loader, optimizer, device, epochs, img_size, strides, num_classes,
           thresholds, out_dir, val_loader=None, box_weight=5.0, log_every=1,
           train_sampler=None, map_iou_thresholds=(0.5,), conf_thresh=0.001, iou_thresh=0.5,
-          lr_schedule=None):
+          lr_schedule=None, map_every=1):
     """Resumes automatically from out_dir/latest.pt if it already exists -- Colab
     sessions drop, so every epoch is saved, not just the end. out_dir/best.pt is
     only (re)written when validation mAP@0.5 improves, and holds just the model --
@@ -169,6 +169,9 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
     train_sampler: pass the RepeatFactorSampler instance (not just the DataLoader
     wrapping it) so its set_epoch can be called -- PyTorch never does this for you.
     lr_schedule: optional lr_at(t), see train/schedule.py and train_one_epoch.
+    map_every: compute val mAP only every N epochs (and always on the last one) --
+    our pure-Python mAP was ~40% of each epoch's time in run02. Val loss is cheap and
+    still runs every epoch. best.pt can only be updated on epochs where mAP ran.
     """
     model.to(device)
     os.makedirs(out_dir, exist_ok=True)
@@ -214,14 +217,15 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
             times["val"] = time.perf_counter() - t0
             msg += f" | val total={val_stats['total']:.4f} box={val_stats['box']:.4f} obj={val_stats['obj']:.4f} cls={val_stats['cls']:.4f}"
 
-            t0 = time.perf_counter()
-            map_results = evaluate_map(
-                model, val_loader, device, strides, num_classes, conf_thresh=conf_thresh,
-                iou_thresh=iou_thresh, map_iou_thresholds=map_iou_thresholds,
-            )
-            times["map"] = time.perf_counter() - t0
-            val_map = map_results[map_iou_thresholds[0]]
-            msg += f" | val mAP@{map_iou_thresholds[0]}={val_map:.4f}"
+            if (epoch + 1) % map_every == 0 or epoch == epochs - 1:
+                t0 = time.perf_counter()
+                map_results = evaluate_map(
+                    model, val_loader, device, strides, num_classes, conf_thresh=conf_thresh,
+                    iou_thresh=iou_thresh, map_iou_thresholds=map_iou_thresholds,
+                )
+                times["map"] = time.perf_counter() - t0
+                val_map = map_results[map_iou_thresholds[0]]
+                msg += f" | val mAP@{map_iou_thresholds[0]}={val_map:.4f}"
 
         # ETA from this session's epochs only -- a resumed run's earlier epochs may
         # have been on different hardware

@@ -63,6 +63,9 @@ def parse_args():
                               "sweeps over confidence (not a deployment threshold)")
     parser.add_argument("--iou-thresh", type=float, default=0.5, help="NMS IoU threshold")
     parser.add_argument("--map-iou-thresholds", type=float, nargs="+", default=[0.5])
+    parser.add_argument("--map-every", type=int, default=5,
+                         help="compute val mAP every N epochs (always on the last one); "
+                              "best.pt is only updated on those epochs")
 
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=42)
@@ -113,6 +116,7 @@ def main(args):
         val_loader=val_loader, box_weight=args.box_weight, train_sampler=train_sampler,
         map_iou_thresholds=tuple(args.map_iou_thresholds),
         conf_thresh=args.conf_thresh, iou_thresh=args.iou_thresh, lr_schedule=lr_schedule,
+        map_every=args.map_every,
     )
 
 

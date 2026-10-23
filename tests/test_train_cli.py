@@ -34,7 +34,7 @@ def make_args(manifest_path, out_dir, **overrides):
         warmup_epochs=1.0, final_lr_ratio=0.01, weight_decay=0.01, box_weight=5.0,
         no_augment=False, aug_scale=[0.7, 1.3], aug_translate=0.1, num_workers=0,
         repeat_threshold=0.5, no_repeat_sampler=False,
-        conf_thresh=0.3, iou_thresh=0.5, map_iou_thresholds=[0.5], device="cpu", seed=42,
+        conf_thresh=0.3, iou_thresh=0.5, map_iou_thresholds=[0.5], map_every=1, device="cpu", seed=42,
     )
     defaults.update(overrides)
     return argparse.Namespace(**defaults)
