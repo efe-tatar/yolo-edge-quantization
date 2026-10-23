@@ -3,11 +3,11 @@
 A YOLO-style object detector, built from scratch in PyTorch, trained on a real
 traffic-sign dataset, then quantized and benchmarked for CPU/edge deployment.
 
-**Status: in progress.** Current best: **val mAP@0.5 = 0.293**, trained from scratch
-for 50 epochs (run03; up from 0.156 for the first working run -- see
+**Status: in progress.** Current best: **val mAP@0.5 = 0.402**, trained from scratch
+for 100 epochs (run04; up from 0.156 for the first working run -- see
 [Results](#results)). Getting a first working model took fixing three bugs that kept
 mAP at exactly 0 (see [Debugging the first runs](#debugging-the-first-runs)). Next:
-one long training run with the settled recipe, then the YOLOv8n baselines -- see
+the YOLOv8n from-scratch baseline, as a reference point for that number -- see
 [Roadmap](#roadmap).
 
 ## Goal
@@ -115,14 +115,16 @@ few of them carry the signal.
 
 ## Results
 
-All runs: this repo's model, trained from scratch, 320px input, 50 epochs, same data
-split, scored with this repo's own mAP code on the val split.
+All runs: this repo's model, trained from scratch, 320px input, same data split,
+scored with this repo's own mAP code on the val split. Each run changes one thing
+from the one before.
 
-| run | change | best val mAP@0.5 |
-|---|---|---|
-| [run01_baseline](results/run01_baseline/README.md) | -- | 0.156 |
-| [run02_augment](results/run02_augment/README.md) | + augmentation, AdamW, warmup + cosine LR | 0.254 |
-| [run03_center](results/run03_center/README.md) | + center sampling | **0.293** |
+| run | change | epochs | best val mAP@0.5 |
+|---|---|---|---|
+| [run01_baseline](results/run01_baseline/README.md) | -- | 50 | 0.156 |
+| [run02_augment](results/run02_augment/README.md) | + augmentation, AdamW, warmup + cosine LR | 50 | 0.254 |
+| [run03_center](results/run03_center/README.md) | + center sampling | 50 | 0.293 |
+| [run04_long](results/run04_long/README.md) | trained 2x longer | 100 | **0.402** |
 
 ### Run 1: baseline
 
@@ -200,6 +202,32 @@ What this run shows:
   parking, bottom-right), and a few background false positives that recur from run
   to run.
 
+### Run 4: the same recipe, 100 epochs
+
+One change from run 3: twice the epochs, with the cosine schedule stretched to match.
+Details: [results/run04_long](results/run04_long/README.md).
+
+| val mAP@0.5 at epoch | 49 | 69 | 89 | 99 |
+|---|---|---|---|---|
+| run 3 (50 epochs) | **0.293** | -- | -- | -- |
+| run 4 (100 epochs) | 0.307 | 0.362 | 0.400 | **0.402** |
+
+![run 4 predictions on test images](results/run04_long/conf07.png)
+
+*Same test images, conf 0.7. Green: ground truth. Red: predictions.*
+
+What this run shows:
+
+- **+37% mAP over run 3**, levelling off at ~0.40 over the last 20 epochs.
+- **Late overfitting:** from epoch ~70, val objectness loss rises (0.50 -> 0.70)
+  while train losses keep falling. It shows up as a new error: small, confident boxes
+  on pictograms *inside* larger signs (top-middle, bottom-right) -- NMS can't remove
+  those, since they barely overlap the sign's own box.
+- **The background false positives that recurred in runs 2 and 3 are gone.**
+- This is the model's best result so far, and likely close to what this recipe can
+  do on ~4,000 training images. Whether 0.40 is good for a from-scratch model on this
+  data is what the YOLOv8n from-scratch baseline will show.
+
 For scale: a COCO-pretrained YOLOv8n fine-tuned on this dataset in an earlier
 project reached 0.79 mAP@0.5 -- with pretraining, Ultralytics' default training
 recipe (augmentation included) and a different split, so it's a ceiling, not a
@@ -225,7 +253,8 @@ python -m pytest tests/ -v
 - [x] A real training run (baseline: val mAP@0.5 0.156)
 - [x] Augmentation (box-aware, no horizontal flips) + LR schedule (val mAP@0.5 0.254)
 - [x] Center sampling (several positive cells per object) (val mAP@0.5 0.293)
-- [ ] Long final training run with the settled recipe
+- [x] Long final training run with the settled recipe (100 epochs, val mAP@0.5 0.402)
+- [ ] Per-class AP vs. training examples (is the late overfitting a data limit?)
 - [ ] Reference YOLOv8n baselines (from-scratch and pretrained)
 - [ ] Three-way comparison
 - [ ] Quantization (PTQ, QAT)
