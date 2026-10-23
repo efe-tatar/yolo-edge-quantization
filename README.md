@@ -3,11 +3,12 @@
 A YOLO-style object detector, built from scratch in PyTorch, trained on a real
 traffic-sign dataset, then quantized and benchmarked for CPU/edge deployment.
 
-**Status: in progress.** Current best: **val mAP@0.5 = 0.254**, trained from scratch
-for 50 epochs (run02: augmentation + LR schedule, up from 0.156 without). Getting a
-first working model took fixing three bugs that kept mAP at exactly 0 (see
-[Debugging the first runs](#debugging-the-first-runs)). Next: center sampling and
-longer training -- see [Roadmap](#roadmap).
+**Status: in progress.** Current best: **val mAP@0.5 = 0.293**, trained from scratch
+for 50 epochs (run03; up from 0.156 for the first working run -- see
+[Results](#results)). Getting a first working model took fixing three bugs that kept
+mAP at exactly 0 (see [Debugging the first runs](#debugging-the-first-runs)). Next:
+one long training run with the settled recipe, then the YOLOv8n baselines -- see
+[Roadmap](#roadmap).
 
 ## Goal
 
@@ -60,7 +61,9 @@ image --> Backbone --> P3, P4, P5 (strides 8/16/32)
   class-agnostic) NMS.
 - **Target assignment**: FCOS-style static size-range routing (a box goes to the
   scale whose stride best matches its size), stride-normalized regression targets,
-  smallest-box-wins on cell collisions.
+  smallest-box-wins on cell collisions, and center sampling: the cell containing the
+  box center plus its neighbours whose centers fall inside the box are all positives
+  (up to 9 per object, see run 3 below).
 
 ## Repo structure
 
@@ -73,7 +76,7 @@ colab/     dataset split, training, and debugging notebooks (the only place that
            knows this is Roboflow's traffic-sign dataset specifically -- everything
            above is dataset-agnostic by design)
 results/   per-run metrics, logs and prediction images; the debugging write-up
-tests/     pytest, 101 tests, every module above
+tests/     pytest, 106 tests, every module above
 train_model.py / export_model.py   training and ONNX export CLIs
 ```
 
@@ -118,7 +121,8 @@ split, scored with this repo's own mAP code on the val split.
 | run | change | best val mAP@0.5 |
 |---|---|---|
 | [run01_baseline](results/run01_baseline/README.md) | -- | 0.156 |
-| [run02_augment](results/run02_augment/README.md) | + augmentation, AdamW, warmup + cosine LR | **0.254** |
+| [run02_augment](results/run02_augment/README.md) | + augmentation, AdamW, warmup + cosine LR | 0.254 |
+| [run03_center](results/run03_center/README.md) | + center sampling | **0.293** |
 
 ### Run 1: baseline
 
@@ -169,6 +173,33 @@ What this run shows:
 - **Val mAP took ~40% of each epoch's time** (pure-Python, CPU). It now runs every
   5 epochs by default.
 
+### Run 3: center sampling
+
+One change from run 2: each object now has up to 9 positive cells (its center cell
+plus neighbours inside the box) instead of 1. Details:
+[results/run03_center](results/run03_center/README.md).
+
+| val mAP@0.5 at epoch | 19 | 29 | 39 | 49 |
+|---|---|---|---|---|
+| run 2 | 0.134 | 0.185 | 0.246 | 0.253 |
+| run 3 | 0.155 | 0.235 | 0.289 | **0.293** |
+
+![run 3 predictions on test images](results/run03_center/conf07.png)
+
+*Same test images, conf 0.7. Green: ground truth. Red: predictions.*
+
+What this run shows:
+
+- **+16% mAP, and not just faster convergence:** run 3 leads at every checkpoint,
+  and the gap holds at the end, with the learning rate at its floor.
+- **The duplicate stacks are gone** -- bottom-right went from 18 predictions to 2.
+  The cells around an object used to be trained as background but still fired at
+  inference, each with its own class guess; as positives they learn the right class
+  and box, and NMS merges them.
+- **What's left:** small objects (the 320px input), look-alike classes (highway vs.
+  parking, bottom-right), and a few background false positives that recur from run
+  to run.
+
 For scale: a COCO-pretrained YOLOv8n fine-tuned on this dataset in an earlier
 project reached 0.79 mAP@0.5 -- with pretraining, Ultralytics' default training
 recipe (augmentation included) and a different split, so it's a ceiling, not a
@@ -193,7 +224,8 @@ python -m pytest tests/ -v
 - [x] Per-branch diagnostics; fixed eval threshold, cls and obj loss normalization
 - [x] A real training run (baseline: val mAP@0.5 0.156)
 - [x] Augmentation (box-aware, no horizontal flips) + LR schedule (val mAP@0.5 0.254)
-- [ ] Center sampling (several positive cells per object)
+- [x] Center sampling (several positive cells per object) (val mAP@0.5 0.293)
+- [ ] Long final training run with the settled recipe
 - [ ] Reference YOLOv8n baselines (from-scratch and pretrained)
 - [ ] Three-way comparison
 - [ ] Quantization (PTQ, QAT)

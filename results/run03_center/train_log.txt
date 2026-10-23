@@ -1,0 +1,50 @@
+epoch 0: train total=88.4684 box=3.0673 obj=2.3745 cls=70.7573 lr=3.31e-04 | val total=40.3054 box=1.9597 obj=1.6937 cls=28.8132 | time train=56s val=6s epoch=62s elapsed=0h01m02s eta=0h50m47s
+epoch 1: train total=29.1034 box=1.6560 obj=1.3988 cls=19.4246 lr=6.64e-04 | val total=33.0440 box=1.6863 obj=1.3842 cls=23.2284 | time train=54s val=6s epoch=60s elapsed=0h02m02s eta=0h48m57s
+epoch 2: train total=23.0734 box=1.4651 obj=1.1526 cls=14.5953 lr=9.98e-04 | val total=24.6136 box=1.4346 obj=1.1584 cls=16.2820 | time train=54s val=6s epoch=61s elapsed=0h03m03s eta=0h47m52s
+epoch 3: train total=20.4087 box=1.3186 obj=0.9538 cls=12.8620 lr=9.99e-04 | val total=24.7217 box=1.5289 obj=1.1382 cls=15.9391 | time train=55s val=6s epoch=62s elapsed=0h04m05s eta=0h47m03s
+epoch 4: train total=18.7624 box=1.2142 obj=0.8411 cls=11.8503 lr=9.96e-04 | val total=20.4392 box=1.2180 obj=1.0016 cls=13.3476 | val mAP@0.5=0.0182 | time train=56s val=7s map=35s epoch=98s elapsed=0h05m43s eta=0h51m34s
+epoch 5: train total=17.2414 box=1.1228 obj=0.7472 cls=10.8800 lr=9.90e-04 | val total=19.5188 box=1.2926 obj=1.0131 cls=12.0427 | time train=55s val=6s epoch=61s elapsed=0h06m45s eta=0h49m32s
+epoch 6: train total=15.7864 box=1.0450 obj=0.6679 cls=9.8938 lr=9.82e-04 | val total=17.5244 box=1.0398 obj=0.7563 cls=11.5689 | time train=55s val=6s epoch=61s elapsed=0h07m46s eta=0h47m46s
+epoch 7: train total=14.6531 box=0.9777 obj=0.6012 cls=9.1633 lr=9.73e-04 | val total=17.1654 box=0.9821 obj=0.7323 cls=11.5227 | time train=54s val=6s epoch=60s elapsed=0h08m47s eta=0h46m08s
+epoch 8: train total=13.8580 box=0.9253 obj=0.5662 cls=8.6652 lr=9.61e-04 | val total=16.5662 box=0.9609 obj=0.6794 cls=11.0826 | time train=55s val=6s epoch=61s elapsed=0h09m48s eta=0h44m40s
+epoch 9: train total=13.4688 box=0.8819 obj=0.5542 cls=8.5050 lr=9.47e-04 | val total=16.6479 box=0.9685 obj=0.8861 cls=10.9194 | val mAP@0.5=0.0640 | time train=54s val=6s map=33s epoch=94s elapsed=0h11m22s eta=0h45m29s
+epoch 10: train total=13.1163 box=0.8687 obj=0.5634 cls=8.2095 lr=9.31e-04 | val total=17.4022 box=0.9387 obj=0.6846 cls=12.0242 | time train=54s val=6s epoch=60s elapsed=0h12m23s eta=0h43m55s
+epoch 11: train total=12.3845 box=0.8341 obj=0.5284 cls=7.6856 lr=9.13e-04 | val total=16.2846 box=0.9320 obj=0.6582 cls=10.9663 | time train=54s val=6s epoch=60s elapsed=0h13m23s eta=0h42m25s
+epoch 12: train total=11.6523 box=0.7980 obj=0.4721 cls=7.1903 lr=8.94e-04 | val total=13.8740 box=0.9192 obj=0.6605 cls=8.6176 | time train=54s val=6s epoch=60s elapsed=0h14m24s eta=0h41m00s
+epoch 13: train total=11.7093 box=0.8044 obj=0.4991 cls=7.1879 lr=8.72e-04 | val total=13.2496 box=0.7862 obj=0.6172 cls=8.7015 | time train=53s val=6s epoch=59s elapsed=0h15m24s eta=0h39m36s
+epoch 14: train total=10.5812 box=0.7223 obj=0.4460 cls=6.5238 lr=8.49e-04 | val total=12.4071 box=0.7190 obj=0.6251 cls=8.1870 | val mAP@0.5=0.1080 | time train=54s val=6s map=35s epoch=95s elapsed=0h16m59s eta=0h39m38s
+epoch 15: train total=10.6498 box=0.7423 obj=0.4567 cls=6.4816 lr=8.25e-04 | val total=13.0276 box=0.7514 obj=0.7195 cls=8.5511 | time train=55s val=6s epoch=61s elapsed=0h18m00s eta=0h38m16s
+epoch 16: train total=10.3021 box=0.7201 obj=0.4395 cls=6.2623 lr=7.99e-04 | val total=12.2149 box=0.7770 obj=0.5894 cls=7.7403 | time train=54s val=6s epoch=60s elapsed=0h19m01s eta=0h36m55s
+epoch 17: train total=9.5296 box=0.6574 obj=0.4154 cls=5.8270 lr=7.72e-04 | val total=11.4254 box=0.6975 obj=0.6411 cls=7.2970 | time train=55s val=6s epoch=61s elapsed=0h20m02s eta=0h35m37s
+epoch 18: train total=9.2082 box=0.6344 obj=0.4074 cls=5.6286 lr=7.43e-04 | val total=11.1411 box=0.6707 obj=0.5147 cls=7.2729 | time train=55s val=6s epoch=61s elapsed=0h21m04s eta=0h34m22s
+epoch 19: train total=9.0411 box=0.6335 obj=0.3865 cls=5.4872 lr=7.14e-04 | val total=10.6982 box=0.6585 obj=0.5502 cls=6.8556 | val mAP@0.5=0.1552 | time train=55s val=6s map=34s epoch=95s elapsed=0h22m39s eta=0h33m59s
+epoch 20: train total=8.9992 box=0.6349 obj=0.3956 cls=5.4291 lr=6.83e-04 | val total=11.1193 box=0.7111 obj=0.6697 cls=6.8940 | time train=55s val=6s epoch=61s elapsed=0h23m41s eta=0h32m42s
+epoch 21: train total=10.7101 box=0.7435 obj=0.5749 cls=6.4177 lr=6.52e-04 | val total=11.1388 box=0.6956 obj=0.6585 cls=7.0026 | time train=54s val=6s epoch=60s elapsed=0h24m41s eta=0h31m26s
+epoch 22: train total=9.0235 box=0.6317 obj=0.4325 cls=5.4326 lr=6.20e-04 | val total=10.0728 box=0.6043 obj=0.5213 cls=6.5301 | time train=53s val=6s epoch=60s elapsed=0h25m41s eta=0h30m09s
+epoch 23: train total=8.5784 box=0.6139 obj=0.3702 cls=5.1389 lr=5.88e-04 | val total=9.9465 box=0.6203 obj=0.4704 cls=6.3745 | time train=54s val=6s epoch=61s elapsed=0h26m42s eta=0h28m56s
+epoch 24: train total=8.0752 box=0.5589 obj=0.3543 cls=4.9266 lr=5.55e-04 | val total=9.6577 box=0.5979 obj=0.4555 cls=6.2125 | val mAP@0.5=0.1756 | time train=54s val=6s map=32s epoch=92s elapsed=0h28m15s eta=0h28m15s
+epoch 25: train total=7.9282 box=0.5705 obj=0.3625 cls=4.7131 lr=5.22e-04 | val total=9.4736 box=0.5834 obj=0.4980 cls=6.0586 | time train=54s val=6s epoch=61s elapsed=0h29m16s eta=0h27m01s
+epoch 26: train total=8.4074 box=0.5798 obj=0.3432 cls=5.1650 lr=4.89e-04 | val total=9.8026 box=0.5977 obj=0.5492 cls=6.2649 | time train=54s val=6s epoch=60s elapsed=0h30m16s eta=0h25m47s
+epoch 27: train total=7.6739 box=0.5419 obj=0.3291 cls=4.6353 lr=4.56e-04 | val total=9.1285 box=0.5693 obj=0.4441 cls=5.8377 | time train=54s val=6s epoch=60s elapsed=0h31m17s eta=0h24m34s
+epoch 28: train total=7.2503 box=0.5076 obj=0.3011 cls=4.4114 lr=4.23e-04 | val total=8.9281 box=0.5368 obj=0.4564 cls=5.7875 | time train=55s val=7s epoch=62s elapsed=0h32m19s eta=0h23m24s
+epoch 29: train total=7.0040 box=0.4912 obj=0.2927 cls=4.2553 lr=3.90e-04 | val total=8.7041 box=0.5198 obj=0.4130 cls=5.6919 | val mAP@0.5=0.2346 | time train=57s val=7s map=33s epoch=97s elapsed=0h33m57s eta=0h22m38s
+epoch 30: train total=6.9697 box=0.4954 obj=0.2808 cls=4.2118 lr=3.59e-04 | val total=8.5567 box=0.5202 obj=0.3621 cls=5.5934 | time train=56s val=6s epoch=63s elapsed=0h35m00s eta=0h21m27s
+epoch 31: train total=6.7210 box=0.4748 obj=0.2694 cls=4.0778 lr=3.27e-04 | val total=8.5547 box=0.5263 obj=0.3946 cls=5.5287 | time train=56s val=6s epoch=62s elapsed=0h36m02s eta=0h20m16s
+epoch 32: train total=6.7463 box=0.4794 obj=0.2804 cls=4.0691 lr=2.97e-04 | val total=8.5662 box=0.5118 obj=0.4618 cls=5.5457 | time train=55s val=6s epoch=62s elapsed=0h37m04s eta=0h19m06s
+epoch 33: train total=6.5450 box=0.4682 obj=0.2817 cls=3.9223 lr=2.67e-04 | val total=8.7297 box=0.5248 obj=0.4686 cls=5.6372 | time train=55s val=6s epoch=61s elapsed=0h38m05s eta=0h17m55s
+epoch 34: train total=6.2738 box=0.4435 obj=0.2645 cls=3.7917 lr=2.39e-04 | val total=8.2867 box=0.4778 obj=0.5161 cls=5.3816 | val mAP@0.5=0.2648 | time train=53s val=6s map=33s epoch=93s elapsed=0h39m38s eta=0h16m59s
+epoch 35: train total=6.2989 box=0.4390 obj=0.2511 cls=3.8530 lr=2.12e-04 | val total=8.0761 box=0.4606 obj=0.4988 cls=5.2745 | time train=54s val=6s epoch=61s elapsed=0h40m40s eta=0h15m48s
+epoch 36: train total=6.0626 box=0.4277 obj=0.2470 cls=3.6773 lr=1.86e-04 | val total=8.0457 box=0.4528 obj=0.4394 cls=5.3424 | time train=54s val=6s epoch=60s elapsed=0h41m40s eta=0h14m38s
+epoch 37: train total=5.9406 box=0.4221 obj=0.2460 cls=3.5843 lr=1.61e-04 | val total=7.8849 box=0.4536 obj=0.4628 cls=5.1542 | time train=53s val=6s epoch=59s elapsed=0h42m39s eta=0h13m28s
+epoch 38: train total=5.9723 box=0.4119 obj=0.2376 cls=3.6754 lr=1.38e-04 | val total=7.7900 box=0.4396 obj=0.4678 cls=5.1243 | time train=55s val=6s epoch=60s elapsed=0h43m40s eta=0h12m19s
+epoch 39: train total=5.6863 box=0.4005 obj=0.2260 cls=3.4576 lr=1.17e-04 | val total=7.7404 box=0.4431 obj=0.4591 cls=5.0656 | val mAP@0.5=0.2885 | time train=53s val=6s map=32s epoch=92s elapsed=0h45m12s eta=0h11m18s
+epoch 40: train total=5.6170 box=0.4009 obj=0.2327 cls=3.3800 lr=9.70e-05 | val total=7.6452 box=0.4355 obj=0.4245 cls=5.0433 | time train=55s val=6s epoch=62s elapsed=0h46m14s eta=0h10m08s
+epoch 41: train total=5.5736 box=0.3903 obj=0.2207 cls=3.4013 lr=7.92e-05 | val total=7.6831 box=0.4357 obj=0.4043 cls=5.1003 | time train=55s val=6s epoch=61s elapsed=0h47m15s eta=0h09m00s
+epoch 42: train total=5.5416 box=0.3872 obj=0.2191 cls=3.3864 lr=6.33e-05 | val total=7.5418 box=0.4232 obj=0.4004 cls=5.0256 | time train=54s val=6s epoch=60s elapsed=0h48m15s eta=0h07m51s
+epoch 43: train total=5.3410 box=0.3704 obj=0.2141 cls=3.2750 lr=4.94e-05 | val total=7.5462 box=0.4174 obj=0.3745 cls=5.0849 | time train=54s val=6s epoch=59s elapsed=0h49m15s eta=0h06m43s
+epoch 44: train total=5.3152 box=0.3690 obj=0.2181 cls=3.2518 lr=3.75e-05 | val total=7.4927 box=0.4109 obj=0.3650 cls=5.0733 | val mAP@0.5=0.2871 | time train=53s val=6s map=31s epoch=90s elapsed=0h50m45s eta=0h05m38s
+epoch 45: train total=5.1741 box=0.3626 obj=0.2075 cls=3.1536 lr=2.77e-05 | val total=7.4451 box=0.4105 obj=0.3783 cls=5.0142 | time train=53s val=6s epoch=59s elapsed=0h51m45s eta=0h04m30s
+epoch 46: train total=5.3362 box=0.3656 obj=0.2074 cls=3.3009 lr=2.00e-05 | val total=7.4994 box=0.4048 obj=0.4197 cls=5.0555 | time train=53s val=6s epoch=59s elapsed=0h52m44s eta=0h03m21s
+epoch 47: train total=5.2723 box=0.3677 obj=0.2184 cls=3.2156 lr=1.44e-05 | val total=7.3892 box=0.4056 obj=0.4000 cls=4.9613 | time train=53s val=6s epoch=59s elapsed=0h53m43s eta=0h02m14s
+epoch 48: train total=5.1160 box=0.3580 obj=0.2002 cls=3.1259 lr=1.11e-05 | val total=7.4589 box=0.4098 obj=0.4173 cls=4.9924 | time train=53s val=6s epoch=59s elapsed=0h54m42s eta=0h01m06s
+epoch 49: train total=5.1692 box=0.3578 obj=0.2095 cls=3.1707 lr=1.00e-05 | val total=7.3892 box=0.4019 obj=0.4072 cls=4.9727 | val mAP@0.5=0.2929 | time train=53s val=6s map=32s epoch=90s elapsed=0h56m13s eta=0h00m00s

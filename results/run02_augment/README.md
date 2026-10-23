@@ -76,9 +76,11 @@ red = predictions.
    walls (mostly `prio_give_way`, `forb_speed_over_5`); nearly all are gone at 0.5.
    Unconfirmed guess: zoom-out augmentation teaches the model that signs can be very
    small.
-6. **Misses are mostly tiny objects:** the two small crosswalk signs (bottom-left)
-   and the "30" painted on the road (bottom-middle -- labelled `forb_speed_over_30`
-   in the dataset), only a few pixels across at 320px.
+6. **Misses at conf 0.7 are mostly small or unusual objects:** the two tiny
+   crosswalk signs (bottom-left, missed at every threshold, only a few pixels across
+   at 320px), and the "30" painted on the road (bottom-middle -- labelled
+   `forb_speed_over_30` in the dataset), which is detected at conf 0.3 and 0.5 but
+   not at 0.7.
 
 ## Next
 
