@@ -10,13 +10,14 @@ from train.metrics import mean_average_precision
 
 
 def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num_classes,
-                     thresholds, box_weight=5.0, lr_schedule=None, epoch=0):
+                     thresholds, box_weight=5.0, lr_schedule=None, epoch=0, center_radius=0):
     """One pass over dataloader. Yields (images, boxes_list, labels_list) per batch,
     where boxes_list/labels_list are length-B lists of per-image (ragged) tensors --
     the same contract as data/dataset.py's collate_fn.
 
     lr_schedule: optional lr_at(t) (see train/schedule.py), t = fractional epoch --
-    applied before every batch, so warmup is smooth rather than per-epoch steps."""
+    applied before every batch, so warmup is smooth rather than per-epoch steps.
+    center_radius: target assignment's center sampling, see train/targets.build_targets."""
     model.train()
     totals = {"total": 0.0, "box": 0.0, "obj": 0.0, "cls": 0.0}
     n_batches = 0
@@ -35,7 +36,8 @@ def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num
         preds = model(images)
 
         targets = build_targets_batch(
-            boxes_list, labels_list, img_size, img_size, strides, num_classes, thresholds
+            boxes_list, labels_list, img_size, img_size, strides, num_classes, thresholds,
+            center_radius=center_radius,
         )
         targets = [(bt.to(device), ot.to(device), ct.to(device)) for bt, ot, ct in targets]
 
@@ -56,8 +58,9 @@ def train_one_epoch(model, dataloader, optimizer, device, img_size, strides, num
 
 @torch.no_grad()
 def evaluate_loss(model, dataloader, device, img_size, strides, num_classes, thresholds,
-                   box_weight=5.0):
-    """Same loop as train_one_epoch but no gradient step -- for a validation split."""
+                   box_weight=5.0, center_radius=0):
+    """Same loop as train_one_epoch but no gradient step -- for a validation split.
+    center_radius must match training's, or val loss scores a different target."""
     model.eval()
     totals = {"total": 0.0, "box": 0.0, "obj": 0.0, "cls": 0.0}
     n_batches = 0
@@ -69,7 +72,8 @@ def evaluate_loss(model, dataloader, device, img_size, strides, num_classes, thr
 
         preds = model(images)
         targets = build_targets_batch(
-            boxes_list, labels_list, img_size, img_size, strides, num_classes, thresholds
+            boxes_list, labels_list, img_size, img_size, strides, num_classes, thresholds,
+            center_radius=center_radius,
         )
         targets = [(bt.to(device), ot.to(device), ct.to(device)) for bt, ot, ct in targets]
 
@@ -155,7 +159,7 @@ def _hms(seconds):
 def train(model, train_loader, optimizer, device, epochs, img_size, strides, num_classes,
           thresholds, out_dir, val_loader=None, box_weight=5.0, log_every=1,
           train_sampler=None, map_iou_thresholds=(0.5,), conf_thresh=0.001, iou_thresh=0.5,
-          lr_schedule=None, map_every=1):
+          lr_schedule=None, map_every=1, center_radius=0):
     """Resumes automatically from out_dir/latest.pt if it already exists -- Colab
     sessions drop, so every epoch is saved, not just the end. out_dir/best.pt is
     only (re)written when validation mAP@0.5 improves, and holds just the model --
@@ -172,6 +176,7 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
     map_every: compute val mAP only every N epochs (and always on the last one) --
     our pure-Python mAP was ~40% of each epoch's time in run02. Val loss is cheap and
     still runs every epoch. best.pt can only be updated on epochs where mAP ran.
+    center_radius: target assignment's center sampling (train and val loss alike).
     """
     model.to(device)
     os.makedirs(out_dir, exist_ok=True)
@@ -203,6 +208,7 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
         train_stats = train_one_epoch(
             model, train_loader, optimizer, device, img_size, strides, num_classes,
             thresholds, box_weight, lr_schedule=lr_schedule, epoch=epoch,
+            center_radius=center_radius,
         )
         times = {"train": time.perf_counter() - t0}
         msg = f"epoch {epoch}: train total={train_stats['total']:.4f} box={train_stats['box']:.4f} obj={train_stats['obj']:.4f} cls={train_stats['cls']:.4f}"
@@ -212,7 +218,8 @@ def train(model, train_loader, optimizer, device, epochs, img_size, strides, num
         if val_loader is not None:
             t0 = time.perf_counter()
             val_stats = evaluate_loss(
-                model, val_loader, device, img_size, strides, num_classes, thresholds, box_weight
+                model, val_loader, device, img_size, strides, num_classes, thresholds, box_weight,
+                center_radius=center_radius,
             )
             times["val"] = time.perf_counter() - t0
             msg += f" | val total={val_stats['total']:.4f} box={val_stats['box']:.4f} obj={val_stats['obj']:.4f} cls={val_stats['cls']:.4f}"

@@ -43,6 +43,9 @@ def parse_args():
     parser.add_argument("--weight-decay", type=float, default=0.01,
                          help="AdamW decoupled weight decay, conv/linear weights only")
     parser.add_argument("--box-weight", type=float, default=5.0)
+    parser.add_argument("--center-radius", type=int, default=1,
+                         help="center sampling: cells within this many of an object's center "
+                              "cell (and inside its box) are also positives; 0 = center cell only")
 
     parser.add_argument("--no-augment", action="store_true",
                          help="disable training augmentation (scale/translate + colour jitter)")
@@ -116,7 +119,7 @@ def main(args):
         val_loader=val_loader, box_weight=args.box_weight, train_sampler=train_sampler,
         map_iou_thresholds=tuple(args.map_iou_thresholds),
         conf_thresh=args.conf_thresh, iou_thresh=args.iou_thresh, lr_schedule=lr_schedule,
-        map_every=args.map_every,
+        map_every=args.map_every, center_radius=args.center_radius,
     )
 
 

@@ -78,6 +78,64 @@ def test_collision_keeps_smaller_box():
     assert cls_t0[0].sum().item() == 0.0
 
 
+def test_center_sampling_marks_a_3x3_window_inside_a_large_box():
+    boxes = torch.tensor([[100.0, 100.0, 144.0, 144.0]])  # center cell (15, 15) at stride 8
+    labels = torch.tensor([2])
+
+    box_t, obj_t, cls_t = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES,
+                                        THRESHOLDS, center_radius=1)[0]
+
+    assert obj_t.sum().item() == 9.0
+    assert obj_t[0, 14:17, 14:17].sum().item() == 9.0
+    assert cls_t[2].sum().item() == 9.0 and cls_t.sum().item() == 9.0
+    assert (box_t[:, obj_t[0] > 0] > 0).all()  # every positive cell sits inside the box
+
+    # every positive cell decodes back to the same original box
+    decoded = decode_boxes(box_t.unsqueeze(0), STRIDES[0])[0]
+    for gy in range(14, 17):
+        for gx in range(14, 17):
+            assert torch.allclose(decoded[gy, gx], boxes[0], atol=1e-4)
+
+
+def test_center_sampling_skips_neighbours_outside_a_small_box():
+    # 6x6 box centred in cell (15, 15): neighbouring cell centers are 8px away -> outside
+    boxes = torch.tensor([[121.0, 121.0, 127.0, 127.0]])
+    labels = torch.tensor([0])
+
+    _, obj_t, _ = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES,
+                                THRESHOLDS, center_radius=1)[0]
+
+    assert obj_t.sum().item() == 1.0
+    assert obj_t[0, 15, 15] == 1.0
+
+
+def test_center_sampling_window_is_clipped_at_the_image_edge():
+    boxes = torch.tensor([[0.0, 0.0, 40.0, 40.0]])  # center (20, 20) -> cell (2, 2); radius 3 reaches -1
+    labels = torch.tensor([0])
+
+    _, obj_t, _ = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES,
+                                THRESHOLDS, center_radius=3)[0]
+
+    # cell centers 4, 12, 20, 28, 36 are inside 0..40 -> rows/cols 0-4, all within the window
+    assert obj_t.sum().item() == 25.0
+    assert obj_t[0, :5, :5].sum().item() == 25.0
+
+
+def test_center_sampling_collision_is_decided_per_cell():
+    boxes = torch.tensor([
+        [100.0, 100.0, 144.0, 144.0],  # big: center cell (15, 15), 3x3 window rows/cols 14-16
+        [124.0, 124.0, 154.0, 154.0],  # smaller: center (139, 139) -> cell (17, 17), window 16-18
+    ])
+    labels = torch.tensor([0, 1])
+
+    _, obj_t, cls_t = build_targets(boxes, labels, IMG_SIZE, IMG_SIZE, STRIDES, NUM_CLASSES,
+                                    THRESHOLDS, center_radius=1)[0]
+
+    assert cls_t[1, 16, 16] == 1.0 and cls_t[0, 16, 16] == 0.0  # shared cell -> smaller box
+    assert cls_t[0, 15, 15] == 1.0  # the big box keeps the rest of its window
+    assert cls_t[1, 17, 17] == 1.0
+
+
 def test_batch_targets_stack_correctly():
     boxes_list = [
         torch.tensor([[100.0, 100.0, 144.0, 144.0]]),

@@ -10,11 +10,22 @@ def assign_level(size, thresholds):
     return len(thresholds)
 
 
-def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds):
+def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds, center_radius=0):
     """Build per-level targets for a single image, multi-scale, multi-class.
 
     boxes: Tensor (N, 4) in absolute pixel coords, (x1, y1, x2, y2).
     labels: Tensor (N,) of class indices, one per box.
+    center_radius: FCOS-style center sampling. 0 = only the cell containing the box
+        center is positive (the original assignment). r > 0 = also every cell within
+        r cells of it (a (2r+1)^2 window) whose center lies inside the box -- so its
+        (l, t, r, b) targets are all positive, i.e. a valid box seen from that cell.
+        Why (run01/run02): with one positive cell per object, the neighbouring cells
+        were trained as background yet still fired at inference, each with its own
+        class guess and an untrained box, producing stacks of duplicate boxes that
+        per-class NMS can't merge. Training them as positives gives them the right
+        class and a real box, so NMS collapses them -- and gives the classifier
+        several examples per object instead of one. Tiny boxes may contain no
+        neighbouring cell centers and keep just the center cell, as before.
 
     Returns a list of (box_target, obj_target, cls_target) triples, one per level:
         box_target: (4, H, W) -- (l, t, r, b) distances from the cell center to the
@@ -27,7 +38,8 @@ def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
                     (and unused) elsewhere, since cls loss never looks at those cells.
 
     On a collision (two boxes assigned the same cell), the smaller-area box wins --
-    the standard FCOS tie-break, prioritizing the harder, smaller object.
+    the standard FCOS tie-break, prioritizing the harder, smaller object. Decided per
+    cell, so with center sampling two nearby boxes can each keep part of their window.
     """
     grid_sizes = [(img_h // s, img_w // s) for s in strides]
     targets = [
@@ -48,37 +60,50 @@ def build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
         h, w = grid_sizes[level]
 
         cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
-        grid_x = min(max(int(cx // stride), 0), w - 1)
-        grid_y = min(max(int(cy // stride), 0), h - 1)
+        center_x = min(max(int(cx // stride), 0), w - 1)
+        center_y = min(max(int(cy // stride), 0), h - 1)
 
-        if area >= claimed_area[level][grid_y, grid_x]:
-            continue  # a smaller box already claimed this cell
-        claimed_area[level][grid_y, grid_x] = area
+        for dy in range(-center_radius, center_radius + 1):
+            for dx in range(-center_radius, center_radius + 1):
+                grid_x, grid_y = center_x + dx, center_y + dy
+                if not (0 <= grid_x < w and 0 <= grid_y < h):
+                    continue
 
-        cell_cx = (grid_x + 0.5) * stride
-        cell_cy = (grid_y + 0.5) * stride
+                cell_cx = (grid_x + 0.5) * stride
+                cell_cy = (grid_y + 0.5) * stride
 
-        l = (cell_cx - x1) / stride
-        t = (cell_cy - y1) / stride
-        r = (x2 - cell_cx) / stride
-        b = (y2 - cell_cy) / stride
+                # the center cell is always kept (even if a tiny box doesn't contain
+                # its center -- the original behaviour); neighbours only when inside
+                is_center = dx == 0 and dy == 0
+                if not is_center and not (x1 < cell_cx < x2 and y1 < cell_cy < y2):
+                    continue
 
-        box_target[:, grid_y, grid_x] = torch.tensor([l, t, r, b])
-        obj_target[0, grid_y, grid_x] = 1.0
-        cls_target[:, grid_y, grid_x] = 0.0  # clear in case a since-replaced box set it
-        cls_target[int(label), grid_y, grid_x] = 1.0
+                if area >= claimed_area[level][grid_y, grid_x]:
+                    continue  # a smaller box already claimed this cell
+                claimed_area[level][grid_y, grid_x] = area
+
+                l = (cell_cx - x1) / stride
+                t = (cell_cy - y1) / stride
+                r = (x2 - cell_cx) / stride
+                b = (y2 - cell_cy) / stride
+
+                box_target[:, grid_y, grid_x] = torch.tensor([l, t, r, b])
+                obj_target[0, grid_y, grid_x] = 1.0
+                cls_target[:, grid_y, grid_x] = 0.0  # clear in case a since-replaced box set it
+                cls_target[int(label), grid_y, grid_x] = 1.0
 
     return targets
 
 
-def build_targets_batch(boxes_list, labels_list, img_h, img_w, strides, num_classes, thresholds):
+def build_targets_batch(boxes_list, labels_list, img_h, img_w, strides, num_classes, thresholds,
+                        center_radius=0):
     """boxes_list/labels_list: length B, per-image GT (ragged counts).
 
     Returns a list of (box_target, obj_target, cls_target) triples, one per level --
     same structure as build_targets, but each tensor now has a batch dimension.
     """
     per_image = [
-        build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds)
+        build_targets(boxes, labels, img_h, img_w, strides, num_classes, thresholds, center_radius)
         for boxes, labels in zip(boxes_list, labels_list)
     ]
 

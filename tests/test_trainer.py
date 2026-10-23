@@ -260,6 +260,29 @@ def test_map_every_skips_epochs_but_always_runs_the_last(tmp_path, monkeypatch):
     assert (tmp_path / "best.pt").exists()
 
 
+def test_train_passes_center_radius_to_target_building(tmp_path, monkeypatch):
+    import train.trainer as trainer_module
+    radii = []
+    real_build = trainer_module.build_targets_batch
+
+    def recording_build(*args, center_radius=0, **kwargs):
+        radii.append(center_radius)
+        return real_build(*args, center_radius=center_radius, **kwargs)
+
+    monkeypatch.setattr(trainer_module, "build_targets_batch", recording_build)
+
+    model = YOLO(NUM_CLASSES)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    batch = make_batch()
+    train(
+        model, [batch], optimizer, "cpu", epochs=1, img_size=IMG_SIZE, strides=STRIDES,
+        num_classes=NUM_CLASSES, thresholds=THRESHOLDS, out_dir=str(tmp_path),
+        val_loader=[batch], center_radius=2,
+    )
+
+    assert radii == [2, 2]  # one train batch + one val-loss batch, both with the same radius
+
+
 def test_train_sampler_set_epoch_is_called_once_per_epoch():
     class StubSampler:
         def __init__(self):
