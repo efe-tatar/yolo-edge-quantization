@@ -71,12 +71,13 @@ image --> Backbone --> P3, P4, P5 (strides 8/16/32)
 models/    Conv, Bottleneck, C2f, SPPF, Backbone, Neck, Head, YOLO
 train/     target assignment, loss, inference decode + NMS, mAP, training loop,
            per-branch diagnostics
-data/      dataset-agnostic: COCO-format pooling/redistribution/manifest, Dataset
+data/      dataset-agnostic: COCO-format pooling/redistribution/manifest, Dataset,
+           augmentation, export to Ultralytics' format (same split for the baselines)
 colab/     dataset split, training, and debugging notebooks (the only place that
            knows this is Roboflow's traffic-sign dataset specifically -- everything
            above is dataset-agnostic by design)
 results/   per-run metrics, logs and prediction images; the debugging write-up
-tests/     pytest, 106 tests, every module above
+tests/     pytest, 112 tests, every module above
 train_model.py / export_model.py   training and ONNX export CLIs
 ```
 
