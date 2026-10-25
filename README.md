@@ -77,7 +77,7 @@ colab/     dataset split, training, and debugging notebooks (the only place that
            knows this is Roboflow's traffic-sign dataset specifically -- everything
            above is dataset-agnostic by design)
 results/   per-run metrics, logs and prediction images; the debugging write-up
-tests/     pytest, 112 tests, every module above
+tests/     pytest, 120 tests, every module above
 train_model.py / export_model.py   training and ONNX export CLIs
 ```
 
