@@ -13,6 +13,7 @@ path, so the two trees must mirror each other exactly.
 """
 import json
 import os
+import random
 import shutil
 
 from PIL import Image
@@ -41,7 +42,22 @@ def to_yolo_lines(boxes, labels, img_w, img_h):
     return lines
 
 
-def write_yolo_dataset(manifest, class_names, out_dir):
+def copies_per_image(repeat_factors, seed=42):
+    """Turns repeat factors (train/sampler.repeat_factors) into a fixed number of
+    copies per image: floor(r), plus one more with probability frac(r). The expected
+    count per image equals r -- same as RepeatFactorSampler, except that one draws
+    again every epoch while these copies are drawn once, at dataset build time
+    (Ultralytics has no per-epoch sampler hook). Seeded, so a rebuilt dataset (e.g.
+    for a resumed training) is identical."""
+    rng = random.Random(seed)
+    counts = []
+    for r in repeat_factors:
+        whole = int(r)
+        counts.append(whole + (1 if rng.random() < r - whole else 0))
+    return counts
+
+
+def write_yolo_dataset(manifest, class_names, out_dir, train_repeat_factors=None, seed=42):
     """Copies every manifest image into out_dir and writes its label file, plus
     data.yaml. Returns the path to data.yaml.
 
@@ -49,6 +65,10 @@ def write_yolo_dataset(manifest, class_names, out_dir):
     (fast reads during training), and nothing depends on how Ultralytics resolves
     links. Each file gets its manifest index as a prefix -- the manifest pools
     Roboflow's original train/valid/test folders, so two images could share a name.
+
+    train_repeat_factors: optional, one factor per manifest["train"] sample --
+    repeat-factor sampling for Ultralytics, by writing extra copies of train images
+    (see copies_per_image). val and test are never repeated.
     """
     out_dir = os.path.abspath(out_dir)
 
@@ -58,18 +78,25 @@ def write_yolo_dataset(manifest, class_names, out_dir):
         os.makedirs(image_dir, exist_ok=True)
         os.makedirs(label_dir, exist_ok=True)
 
-        for i, sample in enumerate(manifest.get(manifest_split, [])):
-            src = sample["image_path"]
-            name = f"{i:06d}_{os.path.basename(src)}"
-            shutil.copyfile(src, os.path.join(image_dir, name))
+        samples = manifest.get(manifest_split, [])
+        if manifest_split == "train" and train_repeat_factors is not None:
+            assert len(train_repeat_factors) == len(samples), "one repeat factor per train image"
+            counts = copies_per_image(train_repeat_factors, seed)
+        else:
+            counts = [1] * len(samples)
 
+        for i, (sample, count) in enumerate(zip(samples, counts)):
+            src = sample["image_path"]
             with Image.open(src) as image:  # reads the header only, not the pixels
                 img_w, img_h = image.size
-
             lines = to_yolo_lines(sample["boxes"], sample["labels"], img_w, img_h)
-            stem = os.path.splitext(name)[0]
-            with open(os.path.join(label_dir, stem + ".txt"), "w") as f:
-                f.write("\n".join(lines) + ("\n" if lines else ""))
+
+            for k in range(count):
+                copy_tag = f"_rep{k}" if k else ""
+                stem, ext = os.path.splitext(f"{i:06d}{copy_tag}_{os.path.basename(src)}")
+                shutil.copyfile(src, os.path.join(image_dir, stem + ext))
+                with open(os.path.join(label_dir, stem + ".txt"), "w") as f:
+                    f.write("\n".join(lines) + ("\n" if lines else ""))
 
     # written by hand rather than with a YAML library: a JSON string is valid YAML,
     # so json.dumps quotes every class name safely

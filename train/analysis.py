@@ -122,7 +122,8 @@ def precision_recall_f1(scores, is_tp, n_gt, conf_thresh):
 def best_f1(preds, gts, thresholds=None, iou_threshold=0.5, class_aware=True):
     """The confidence threshold maximizing F1 (micro, over all boxes) -- a model's
     natural deployment operating point. Returns (best row, rows for every threshold)."""
-    thresholds = thresholds or [round(0.05 * i, 2) for i in range(1, 20)]
+    # finer near the top: a confident model's optimum can sit above 0.95
+    thresholds = thresholds or [round(0.05 * i, 2) for i in range(1, 20)] + [0.97, 0.98, 0.99]
     scores, is_tp, n_gt = match_all(preds, gts, min(thresholds), iou_threshold, class_aware)
     rows = [precision_recall_f1(scores, is_tp, n_gt, t) for t in thresholds]
     return max(rows, key=lambda r: r["f1"]), rows

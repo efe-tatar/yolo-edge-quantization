@@ -52,7 +52,7 @@ def test_best_f1_is_perfect_on_perfect_predictions():
 
     best, rows = best_f1(preds, gts)
     assert best["f1"] == 1.0 and best["precision"] == 1.0 and best["recall"] == 1.0
-    assert len(rows) == 19
+    assert len(rows) == 22
 
 
 def test_best_f1_picks_the_threshold_that_drops_low_confidence_junk():

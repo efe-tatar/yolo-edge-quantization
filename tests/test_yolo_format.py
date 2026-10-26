@@ -3,7 +3,7 @@ import os
 import pytest
 from PIL import Image
 
-from data.yolo_format import to_yolo_lines, write_yolo_dataset
+from data.yolo_format import copies_per_image, to_yolo_lines, write_yolo_dataset
 
 
 def parse(line):
@@ -83,6 +83,29 @@ def test_write_yolo_dataset_layout_and_labels(tmp_path):
     lines = (out / "labels" / "train" / "000000_img.txt").read_text().splitlines()
     assert [parse(l)[0] for l in lines] == [1, 0]  # one line per box, classes in order
     assert parse(lines[0])[1:] == pytest.approx((0.2, 0.3, 0.2, 0.4))
+
+
+def test_copies_per_image_matches_repeat_factors_on_average():
+    assert copies_per_image([1.0, 2.0, 3.0]) == [1, 2, 3]  # whole factors: exact
+
+    counts = copies_per_image([1.5] * 10000)
+    assert set(counts) == {1, 2}
+    assert abs(sum(counts) / len(counts) - 1.5) < 0.02  # expected count = factor
+
+    assert copies_per_image([1.3] * 50, seed=7) == copies_per_image([1.3] * 50, seed=7)  # reproducible
+
+
+def test_write_yolo_dataset_repeats_only_train_images(tmp_path):
+    out = tmp_path / "yolo"
+    write_yolo_dataset(make_manifest(tmp_path), ["c0", "c1", "c2"], str(out), train_repeat_factors=[1.0, 3.0])
+
+    train_images = sorted(os.listdir(out / "images" / "train"))
+    assert train_images == ["000000_img.jpg", "000001_img.jpg", "000001_rep1_img.jpg", "000001_rep2_img.jpg"]
+    assert sorted(os.listdir(out / "labels" / "train")) == [n.replace(".jpg", ".txt") for n in train_images]
+
+    original = (out / "labels" / "train" / "000001_img.txt").read_text()
+    assert (out / "labels" / "train" / "000001_rep2_img.txt").read_text() == original
+    assert os.listdir(out / "images" / "val") == ["000000_other.jpg"]  # never repeated
 
 
 def test_write_yolo_dataset_data_yaml(tmp_path):
