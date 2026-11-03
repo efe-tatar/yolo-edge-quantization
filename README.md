@@ -87,7 +87,7 @@ colab/     dataset split, training (own model + YOLOv8n), debugging, and model
            traffic-sign dataset specifically -- everything above is dataset-agnostic)
 results/   per-run metrics, logs and prediction images; the debugging and
            comparison write-ups
-tests/     pytest, 129 tests, every module above
+tests/     pytest, 131 tests, every module above
 train_model.py, export_model.py, quantize_model.py, benchmark.py
            CLIs: training, ONNX export, INT8 quantization, CPU latency
 ```
@@ -196,8 +196,8 @@ python benchmark.py fp32=model_fp32.onnx int8=model_int8.onnx --threads 1 2 4
 ```
 
 Training ran on Colab: `colab/train_own_model.ipynb` for this model,
-`colab/train_yolov8n.ipynb` for the baselines, `colab/compare_models.ipynb` and
-`colab/quantize_own_model.ipynb` for the evaluation.
+`colab/train_yolov8n.ipynb` for the baselines, `colab/quantize_own_model.ipynb` for the
+INT8 model. `colab/compare_models.ipynb` evaluates them all, on the same images.
 
 ## Roadmap
 

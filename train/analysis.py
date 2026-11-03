@@ -58,6 +58,25 @@ def predict_onnx(session, samples, img_size, conf_thresh=0.001, nms_iou=0.5, bat
     return _predict(forward, samples, img_size, conf_thresh, nms_iou, batch_size)
 
 
+def predict_ultralytics(model, samples, img_size, conf_thresh=0.001, nms_iou=0.5, batch_size=32):
+    """model: an ultralytics.YOLO. Its boxes are already in original pixels, and it uses
+    its own letterboxing and NMS -- part of that model's method, see the README."""
+    preds = []
+    for start in range(0, len(samples), batch_size):
+        batch = samples[start:start + batch_size]
+        results = model.predict([s["image_path"] for s in batch], imgsz=img_size, conf=conf_thresh,
+                                iou=nms_iou, max_det=300, verbose=False)
+        preds += [(r.boxes.xyxy.cpu(), r.boxes.conf.cpu(), r.boxes.cls.cpu().long()) for r in results]
+    return preds
+
+
+def to_class_agnostic(preds, gts):
+    """Every label set to one class: score the result with num_classes=1 to measure
+    "found the object, box in the right place" with classification taken out."""
+    return ([(b, s, torch.zeros_like(l)) for b, s, l in preds],
+            [(b, torch.zeros_like(l)) for b, l in gts])
+
+
 def _predict(forward, samples, img_size, conf_thresh, nms_iou, batch_size):
     """forward: images tensor -> list of per-level (box, obj, cls) tensors."""
     sizes = image_sizes(samples)

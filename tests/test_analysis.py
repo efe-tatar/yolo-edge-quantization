@@ -1,9 +1,11 @@
+import types
+
 import torch
 from PIL import Image
 
 from train.analysis import (
     best_f1, confusion_pairs, manifest_gts, match_all, per_class_ap, precision_recall_f1,
-    predict_own_model, recall_by_size,
+    predict_own_model, predict_ultralytics, recall_by_size, to_class_agnostic,
 )
 
 
@@ -85,6 +87,36 @@ def test_per_class_ap_skips_absent_classes():
     preds = [pred([A], [0.9], [0])]
     gts = [gt([A], [0])]
     assert per_class_ap(preds, gts, num_classes=2) == [1.0, None]
+
+
+def test_to_class_agnostic_ignores_wrong_labels():
+    from train.metrics import mean_average_precision
+
+    preds = [pred([A], [0.9], [1])]  # right box, wrong class
+    gts = [gt([A], [0])]
+
+    assert mean_average_precision(preds, gts, 2)[0.5] == 0.0
+    assert mean_average_precision(*to_class_agnostic(preds, gts), 1)[0.5] == 1.0
+
+
+def test_predict_ultralytics_batches_and_passes_settings():
+    """A stub with Ultralytics' result shape: no need for the real library here."""
+    calls = []
+
+    class StubYOLO:
+        def predict(self, paths, **kwargs):
+            calls.append((paths, kwargs))
+            boxes = types.SimpleNamespace(xyxy=torch.tensor([A], dtype=torch.float32),
+                                          conf=torch.tensor([0.5]), cls=torch.tensor([2.0]))
+            return [types.SimpleNamespace(boxes=boxes) for _ in paths]
+
+    samples = [{"image_path": f"{i}.jpg"} for i in range(5)]
+    preds = predict_ultralytics(StubYOLO(), samples, 320, conf_thresh=0.01, nms_iou=0.6, batch_size=2)
+
+    assert [len(paths) for paths, _ in calls] == [2, 2, 1]
+    assert calls[0][1]["imgsz"] == 320 and calls[0][1]["conf"] == 0.01 and calls[0][1]["iou"] == 0.6
+    boxes, scores, labels = preds[4]
+    assert len(preds) == 5 and labels.dtype == torch.long and labels.tolist() == [2]
 
 
 class TargetEcho(torch.nn.Module):
