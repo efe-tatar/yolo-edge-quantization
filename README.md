@@ -7,6 +7,8 @@ traffic-sign dataset, then quantized and benchmarked for CPU/edge deployment.
 trained from scratch (0.29) and below COCO-pretrained YOLOv8n (0.59). INT8 quantization
 keeps mAP about level while making it **3.6x smaller and up to 2.2x faster on CPU**. See
 [Comparison with YOLOv8n](#comparison-with-yolov8n) and [Quantization](#quantization).
+Download the models from the
+[v1.0 release](https://github.com/efe-tatar/yolo-edge-quantization/releases/tag/v1.0).
 
 Getting a first working model took fixing three bugs that kept mAP at exactly 0 (see
 [Debugging the first runs](#debugging-the-first-runs)); from there, val mAP@0.5 went from
@@ -217,6 +219,12 @@ python benchmark.py fp32=model_fp32.onnx int8=model_int8.onnx --threads 1 2 4
 Training ran on Colab: `colab/train_own_model.ipynb` for this model,
 `colab/train_yolov8n.ipynb` for the baselines, `colab/quantize_own_model.ipynb` for the
 INT8 model. `colab/compare_models.ipynb` evaluates them all, on the same images.
+
+Trained weights are in the
+[v1.0 release](https://github.com/efe-tatar/yolo-edge-quantization/releases/tag/v1.0):
+`model_int8.onnx`, `best.pt` (PyTorch checkpoint) and `classes.json` (class names). For the
+INT8 model, use 320x320 input, confidence 0.95 and NMS IoU 0.5. The ONNX file doesn't
+include box decoding or NMS; see `predict_onnx` in `train/analysis.py`.
 
 ## Roadmap
 
