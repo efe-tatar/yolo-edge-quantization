@@ -3,15 +3,14 @@
 A YOLO-style object detector, built from scratch in PyTorch, trained on a real
 traffic-sign dataset, then quantized and benchmarked for CPU/edge deployment.
 
-**Status: in progress.** Current best: **val mAP@0.5 = 0.402**, trained from scratch
-for 100 epochs (run04; up from 0.156 for the first working run -- see
-[Results](#results)). Getting a first working model took fixing three bugs that kept
-mAP at exactly 0 (see [Debugging the first runs](#debugging-the-first-runs)). Against
-Ultralytics YOLOv8n trained from scratch under the same conditions it scores higher
-(0.402 vs 0.284), but for an instructive reason: YOLOv8n localizes better, this model
-classifies much better (see [Comparison with YOLOv8n](#comparison-with-yolov8n)).
-Next: YOLOv8n fine-tuned from COCO weights, then quantization -- see
-[Roadmap](#roadmap).
+**Result:** the from-scratch detector reaches **0.43 mAP@0.5 on test**, above YOLOv8n
+trained from scratch (0.29) and below COCO-pretrained YOLOv8n (0.59). INT8 quantization
+keeps mAP about level while making it **3.6x smaller and up to 2.2x faster on CPU**. See
+[Comparison with YOLOv8n](#comparison-with-yolov8n) and [Quantization](#quantization).
+
+Getting a first working model took fixing three bugs that kept mAP at exactly 0 (see
+[Debugging the first runs](#debugging-the-first-runs)); from there, val mAP@0.5 went from
+0.156 to 0.402 over four runs (see [Training runs](#training-runs)).
 
 ## Goal
 
@@ -24,8 +23,8 @@ matched conditions is how this project tries to answer that:
 2. **Ultralytics YOLOv8n**, trained from scratch on the same data.
 3. **Ultralytics YOLOv8n**, fine-tuned from COCO-pretrained weights.
 
-(1) vs (2) isolates how close a from-scratch reimplementation gets to a mature
-reference architecture under identical conditions. (2) vs (3) isolates the value of
+(1) vs (2) measures how close a from-scratch reimplementation gets to a mature
+reference architecture under matched conditions. (2) vs (3) isolates the value of
 pretraining, which (1) can't replicate but can be measured against. The final
 deliverable quantizes and benchmarks this repo's own model on CPU (PyTorch -> ONNX ->
 ONNX Runtime, FP32 vs post-training-quantized INT8).
@@ -34,7 +33,7 @@ ONNX Runtime, FP32 vs post-training-quantized INT8).
 size (320), epoch budget, checkpoint selection on val, the scoring code, and anything
 that changes what a label means (no horizontal flips: a mirrored "turn left" sign is
 a "turn right" sign) -- while each model keeps its own training recipe and
-post-processing, tuned on val. Final numbers come from the test split, used once.
+post-processing, chosen on val. Final numbers come from the test split, used once.
 
 ## Architecture
 
@@ -125,7 +124,7 @@ an experiment where it was the only change. Full numbers and plots:
 Bugs 2 and 3 are the same mistake: averaging a loss over many elements when only a
 few of them carry the signal.
 
-## Results
+## Training runs
 
 This repo's model, trained from scratch: 320px input, same data split, scored with this
 repo's own mAP code on the val split. Each run changes one thing from the one before;
@@ -142,45 +141,65 @@ its folder has the config, full log, prediction images and observations.
 
 *Run 4 on test images, conf 0.7. Green: ground truth. Red: predictions.*
 
-For scale: a COCO-pretrained YOLOv8n fine-tuned on this dataset in an earlier
-project reached 0.79 mAP@0.5 -- with pretraining, Ultralytics' default training
-recipe (augmentation included) and a different split, so it's a ceiling, not a
-like-for-like comparison. The fair comparison is YOLOv8n trained from scratch under
-this repo's settings (see [Goal](#goal)) -- next section.
-
 ## Comparison with YOLOv8n
 
-This repo's model (run04) vs. Ultralytics YOLOv8n trained from scratch, same split,
-320px, 100 epochs, scored by the same code (`colab/compare_models.ipynb`). Val split
-for now -- final numbers on test at the end. Full tables (recall by object size,
-per-class AP, NMS sweep): [results/comparison](results/comparison/README.md).
+All on the test split, same data split, 320px, 100 epochs, scored by the same code
+(`colab/compare_models.ipynb`). Full tables (per-class AP, recall by object size,
+protocol): [results/comparison](results/comparison/README.md).
 
-| | own (run04) | YOLOv8n default recipe | YOLOv8n no flips + repeat-factor sampling |
-|---|---|---|---|
-| parameters / GFLOPs at 320 | 3.57M / 1.92 | 3.02M / 2.03 | 3.02M / 2.03 |
-| **mAP@0.5** | **0.402** | 0.283 | 0.284 |
-| class-agnostic mAP@0.5 | 0.678 | **0.769** | 0.759 |
-| mAP lost to wrong classes | **0.276** | 0.486 | 0.475 |
-| F1 at each model's best threshold | **0.626** | 0.575 | 0.594 |
+| | own (run04) | own INT8 | YOLOv8n scratch | YOLOv8n pretrained |
+|---|---|---|---|---|
+| parameters / GFLOPs at 320 | 3.57M / 1.92 | same | 3.02M / 2.03 | 3.02M / 2.03 |
+| **mAP@0.5** | 0.431 | 0.438 | 0.293 | **0.591** |
+| mAP@[.5:.95] | 0.320 | 0.311 | 0.232 | **0.507** |
+| class-agnostic mAP@0.5 | 0.680 | 0.662 | 0.764 | **0.927** |
+| F1 at each model's threshold from val | 0.626 | 0.607 | 0.584 | **0.796** |
 
 What it shows:
 
-- **Complementary strengths.** YOLOv8n finds and boxes objects better (class-agnostic
-  mAP ~0.76 vs 0.68) -- its box loss (DFL + CIoU) and dynamic target assignment are
-  stronger than this model's L1 distances and fixed size ranges. This model classifies
-  far better, and that decides mAP@0.5 at 320px.
-- **A hypothesis that didn't hold.** Against YOLOv8n's default recipe, the gap sat in
-  rare classes (classes with < 20 training objects: 0.11 vs 0.01 mean AP) and in
-  left/right signs (`mand_left`: 0.75 vs 0.00) -- pointing at the default's horizontal
-  flips, which swap left/right signs' meaning, and its lack of class rebalancing.
-  Training YOLOv8n again without flips and with the same repeat-factor sampling as this
-  model changed almost nothing (mAP 0.283 -> 0.284).
-- **Likely causes, not tested** (no further runs budgeted): mosaic augmentation at
-  320px shrinks a median 29px sign to ~15px for most of training -- enough to locate,
-  often not enough to read "30" vs "50" or an arrow's direction -- and Ultralytics'
-  loss weighting favours boxes over classes (7.5 + 1.5 vs 0.5).
-- **Caveats:** val split (this model's recipe was tuned on it), one run per model,
-  letterbox vs. stretch resizing not isolated.
+- **Pretraining is the largest effect measured.** Same architecture and recipe, and COCO
+  weights take YOLOv8n from 0.293 to 0.591.
+- **Against YOLOv8n from scratch, this model classifies better and localizes worse.**
+  YOLOv8n leads when classes are ignored (0.764 vs 0.680) and this model leads once they
+  count (0.431 vs 0.293). That's consistent with this model's simpler L1 box loss and fixed
+  size ranges against DFL + CIoU and dynamic assignment, though no run isolated those.
+- **This model's confidence ranks its detections poorly.** On 32-64 px objects it can reach
+  93% recall at conf 0.001 but 65% at its threshold of 0.97, where pretrained goes from 98%
+  to 94%. Duplicate boxes on one sign survive even at 0.97 (third row below).
+- **A hypothesis that didn't hold.** On val, the gap to YOLOv8n's default recipe sat in rare
+  classes and left/right signs, pointing at its horizontal flips and lack of class
+  rebalancing. Removing the flips and adding repeat-factor sampling changed almost nothing
+  (0.283 -> 0.284), so why YOLOv8n from scratch does this poorly remains unexplained.
+
+**Caveats:** this model's recipe was tuned over four runs on val while YOLOv8n used
+Ultralytics' defaults, so this isn't evidence of a better architecture. There's one
+training run per model, and 27 of the 53 scored classes have fewer than 10 test objects.
+
+![the four models on the same test images](results/comparison/side_by_side_test.png)
+
+*Green: ground truth. Red: predictions, at each model's own threshold. Four images,
+illustrative only.*
+
+## Quantization
+
+ONNX Runtime static post-training quantization of run04: QDQ, per-channel weights, MinMax
+calibration on 200 training images. Latency on a laptop CPU (Intel i5-1335U), 320x320,
+model inference only (no NMS), 100 runs.
+
+| | FP32 | INT8 | change |
+|---|---|---|---|
+| ONNX size | 14.34 MB | **3.96 MB** | 3.6x smaller |
+| median latency, 1 thread | 17.7 ms | **8.1 ms** | 2.2x faster |
+| median latency, 2 threads | 9.5 ms | **5.8 ms** | 1.6x faster |
+| median latency, 4 threads | 8.0 ms | **7.1 ms** | 1.1x faster |
+| mAP@0.5 (test) | 0.431 | 0.438 | +0.006 |
+| class-agnostic mAP@0.5 (test) | 0.680 | 0.662 | -0.017 |
+| F1 (test) | 0.626 | 0.607 | -0.019 |
+
+Accuracy is about level rather than better: the mAP@0.5 gain is too small to read
+anything into, with INT8 ahead on 18 classes and behind on 20, and the other measures dip
+slightly. These timings come from one sitting on a laptop, not an edge device, so the
+ratios are safer to quote than the milliseconds.
 
 ## Usage
 
@@ -215,10 +234,10 @@ INT8 model. `colab/compare_models.ipynb` evaluates them all, on the same images.
 - [x] Comparison tooling: per-class AP vs. training examples, class-agnostic mAP,
       recall by size, confusions, per-model NMS/threshold tuning
 - [x] YOLOv8n from scratch (default recipe, then no flips + repeat-factor sampling)
-- [ ] YOLOv8n fine-tuned from COCO weights
-- [ ] Three-way comparison on the test split
+- [x] YOLOv8n fine-tuned from COCO weights
 - [x] Post-training INT8 quantization + CPU latency tooling
-- [ ] Quantization results
+- [x] Final comparison of all four models on the test split (test mAP@0.5 0.431)
+- [x] Quantization results (3.6x smaller, up to 2.2x faster, mAP about level)
 
 ## License
 
