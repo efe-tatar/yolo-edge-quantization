@@ -43,6 +43,23 @@ def predict_own_model(model, samples, img_size, device, conf_thresh=0.001, nms_i
     """Runs this repo's model on samples (no augmentation) and returns preds with boxes
     mapped back from the img_size x img_size stretched frame to original pixels."""
     model.eval()
+    return _predict(lambda images: model(images.to(device)), samples, img_size,
+                    conf_thresh, nms_iou, batch_size)
+
+
+def predict_onnx(session, samples, img_size, conf_thresh=0.001, nms_iou=0.5, batch_size=16):
+    """Same as predict_own_model, for an exported model (FP32 or quantized) in an
+    onnxruntime session -- so both go through identical decoding and scoring. Expects
+    export_model.py's flat outputs: box_0, obj_0, cls_0, box_1, ..."""
+    def forward(images):
+        outputs = [torch.from_numpy(o) for o in session.run(None, {"images": images.numpy()})]
+        return [tuple(outputs[i:i + 3]) for i in range(0, len(outputs), 3)]
+
+    return _predict(forward, samples, img_size, conf_thresh, nms_iou, batch_size)
+
+
+def _predict(forward, samples, img_size, conf_thresh, nms_iou, batch_size):
+    """forward: images tensor -> list of per-level (box, obj, cls) tensors."""
     sizes = image_sizes(samples)
     loader = torch.utils.data.DataLoader(
         DetectionDataset(samples, img_size=img_size), batch_size=batch_size,
@@ -51,7 +68,7 @@ def predict_own_model(model, samples, img_size, device, conf_thresh=0.001, nms_i
 
     preds = []
     for images, _, _ in loader:
-        decoded = decode_predictions(model(images.to(device)), OWN_MODEL_STRIDES,
+        decoded = decode_predictions(forward(images), OWN_MODEL_STRIDES,
                                      conf_thresh=conf_thresh, iou_thresh=nms_iou)
         for boxes, scores, labels in decoded:
             w, h = sizes[len(preds)]

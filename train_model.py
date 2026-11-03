@@ -30,9 +30,10 @@ def parse_args():
 
     parser.add_argument("--img-size", type=int, default=320)
     parser.add_argument("--strides", type=int, nargs="+", default=[8, 16, 32])
-    parser.add_argument("--thresholds", type=float, nargs="+", default=[64.0, 128.0],
-                         help="placeholder -- override after checking this dataset's real "
-                              "box-size distribution (see colab/dataset_split.ipynb)")
+    parser.add_argument("--thresholds", type=float, nargs="+", default=[32.0, 80.0],
+                         help="box-size cutoffs between strides, from the traffic-sign dataset's "
+                              "percentiles (p50=29px, p90=81px at 320px; colab/dataset_split.ipynb) "
+                              "-- recheck for another dataset or input size")
 
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch-size", type=int, default=16)

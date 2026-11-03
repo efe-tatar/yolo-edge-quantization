@@ -6,8 +6,11 @@ traffic-sign dataset, then quantized and benchmarked for CPU/edge deployment.
 **Status: in progress.** Current best: **val mAP@0.5 = 0.402**, trained from scratch
 for 100 epochs (run04; up from 0.156 for the first working run -- see
 [Results](#results)). Getting a first working model took fixing three bugs that kept
-mAP at exactly 0 (see [Debugging the first runs](#debugging-the-first-runs)). Next:
-the YOLOv8n from-scratch baseline, as a reference point for that number -- see
+mAP at exactly 0 (see [Debugging the first runs](#debugging-the-first-runs)). Against
+Ultralytics YOLOv8n trained from scratch under the same conditions it scores higher
+(0.402 vs 0.284), but for an instructive reason: YOLOv8n localizes better, this model
+classifies much better (see [Comparison with YOLOv8n](#comparison-with-yolov8n)).
+Next: YOLOv8n fine-tuned from COCO weights, then quantization -- see
 [Roadmap](#roadmap).
 
 ## Goal
@@ -24,8 +27,14 @@ matched conditions is how this project tries to answer that:
 (1) vs (2) isolates how close a from-scratch reimplementation gets to a mature
 reference architecture under identical conditions. (2) vs (3) isolates the value of
 pretraining, which (1) can't replicate but can be measured against. The final
-deliverable quantizes and benchmarks this repo's own model (PyTorch -> ONNX -> ONNX
-Runtime, FP32 vs FP16 vs PTQ INT8 vs QAT INT8) on CPU.
+deliverable quantizes and benchmarks this repo's own model on CPU (PyTorch -> ONNX ->
+ONNX Runtime, FP32 vs post-training-quantized INT8).
+
+"Matched conditions" means matching what defines the task -- the data split, input
+size (320), epoch budget, checkpoint selection on val, the scoring code, and anything
+that changes what a label means (no horizontal flips: a mirrored "turn left" sign is
+a "turn right" sign) -- while each model keeps its own training recipe and
+post-processing, tuned on val. Final numbers come from the test split, used once.
 
 ## Architecture
 
@@ -63,7 +72,7 @@ image --> Backbone --> P3, P4, P5 (strides 8/16/32)
   scale whose stride best matches its size), stride-normalized regression targets,
   smallest-box-wins on cell collisions, and center sampling: the cell containing the
   box center plus its neighbours whose centers fall inside the box are all positives
-  (up to 9 per object, see run 3 below).
+  (up to 9 per object, see [run03](results/run03_center/README.md)).
 
 ## Repo structure
 
@@ -73,17 +82,19 @@ train/     target assignment, loss, inference decode + NMS, mAP, training loop,
            per-branch diagnostics
 data/      dataset-agnostic: COCO-format pooling/redistribution/manifest, Dataset,
            augmentation, export to Ultralytics' format (same split for the baselines)
-colab/     dataset split, training, and debugging notebooks (the only place that
-           knows this is Roboflow's traffic-sign dataset specifically -- everything
-           above is dataset-agnostic by design)
-results/   per-run metrics, logs and prediction images; the debugging write-up
-tests/     pytest, 120 tests, every module above
-train_model.py / export_model.py   training and ONNX export CLIs
+colab/     dataset split, training (own model + YOLOv8n), debugging, and model
+           comparison notebooks (the only place that knows this is Roboflow's
+           traffic-sign dataset specifically -- everything above is dataset-agnostic)
+results/   per-run metrics, logs and prediction images; the debugging and
+           comparison write-ups
+tests/     pytest, 129 tests, every module above
+train_model.py, export_model.py, quantize_model.py, benchmark.py
+           CLIs: training, ONNX export, INT8 quantization, CPU latency
 ```
 
 ## Dataset
 
-[Roboflow: YOLO to COCO Traffic Signs](https://universe.roboflow.com/) (54 classes,
+[Roboflow: YOLO to COCO Traffic Signs](https://universe.roboflow.com/yolo-to-coco-ca2en/yolo-to-coco-kpv56) (54 classes,
 ~6,000 images). The provided train/valid/test split isn't class-stratified, so
 `data/coco_split.py` redistributes it photo-by-photo, rarest class first, 70/15/15 --
 keeping every class (forced train-only below a minimum-photo threshold) rather than
@@ -116,131 +127,77 @@ few of them carry the signal.
 
 ## Results
 
-All runs: this repo's model, trained from scratch, 320px input, same data split,
-scored with this repo's own mAP code on the val split. Each run changes one thing
-from the one before.
+This repo's model, trained from scratch: 320px input, same data split, scored with this
+repo's own mAP code on the val split. Each run changes one thing from the one before;
+its folder has the config, full log, prediction images and observations.
 
-| run | change | epochs | best val mAP@0.5 |
-|---|---|---|---|
-| [run01_baseline](results/run01_baseline/README.md) | -- | 50 | 0.156 |
-| [run02_augment](results/run02_augment/README.md) | + augmentation, AdamW, warmup + cosine LR | 50 | 0.254 |
-| [run03_center](results/run03_center/README.md) | + center sampling | 50 | 0.293 |
-| [run04_long](results/run04_long/README.md) | trained 2x longer | 100 | **0.402** |
-
-### Run 1: baseline
-
-From scratch, 320px input, 50 epochs, Adam at a constant 1e-3, no augmentation.
-Details, config and full log: [results/run01_baseline](results/run01_baseline/README.md).
-
-| metric | value |
-|---|---|
-| best val mAP@0.5 | **0.156** (epoch 46) |
-| final val mAP@0.5 | 0.127 (epoch 49) |
-
-![run 1 predictions on test images](results/run01_baseline/test_predictions.png)
-
-*Test images, conf 0.3. Green: ground truth. Red: predictions.*
-
-What this run shows:
-
-- **Classification overfits.** Val cls loss is lowest at epoch 18, then rises while
-  train cls loss keeps falling ~10x; val mAP plateaus from epoch ~28. Box loss keeps
-  improving on val: localization generalizes, classification doesn't.
-- **Several boxes per sign, and stray boxes.** Only one cell per object is trained,
-  so neighbouring cells fire with their own class guesses (surviving per-class NMS)
-  and untrained box outputs.
-- **Loss spikes** at epochs 29 and 48, from a constant learning rate.
-
-### Run 2: augmentation + LR schedule
-
-Targets run 1's overfitting and spikes: random scale/shift with boxes moved along
-(no flips -- they would swap left/right signs), colour jitter, AdamW with weight
-decay, and warmup + cosine decay. Details: [results/run02_augment](results/run02_augment/README.md).
-
-| metric | run 1 | run 2 |
-|---|---|---|
-| best val mAP@0.5 | 0.156 | **0.254** |
-| val cls loss | rises after epoch 18 | falls all run (31.1 -> 5.46) |
-
-![run 2 predictions on test images](results/run02_augment/conf07.png)
-
-*Same test images, conf 0.7. Green: ground truth. Red: predictions.*
-
-What this run shows:
-
-- **The overfitting is gone**, and val mAP was still rising when the learning rate
-  bottomed out: the model is now under-trained, not over-fitted.
-- **Classes are mostly right** at high confidence, where run 1 mostly got them wrong.
-- **Stacked duplicate boxes remain** (bottom-right) -- the one-cell-per-object
-  assignment, next on the list.
-- **Val mAP took ~40% of each epoch's time** (pure-Python, CPU). It now runs every
-  5 epochs by default.
-
-### Run 3: center sampling
-
-One change from run 2: each object now has up to 9 positive cells (its center cell
-plus neighbours inside the box) instead of 1. Details:
-[results/run03_center](results/run03_center/README.md).
-
-| val mAP@0.5 at epoch | 19 | 29 | 39 | 49 |
+| run | change | epochs | best val mAP@0.5 | what it showed |
 |---|---|---|---|---|
-| run 2 | 0.134 | 0.185 | 0.246 | 0.253 |
-| run 3 | 0.155 | 0.235 | 0.289 | **0.293** |
-
-![run 3 predictions on test images](results/run03_center/conf07.png)
-
-*Same test images, conf 0.7. Green: ground truth. Red: predictions.*
-
-What this run shows:
-
-- **+16% mAP, and not just faster convergence:** run 3 leads at every checkpoint,
-  and the gap holds at the end, with the learning rate at its floor.
-- **The duplicate stacks are gone** -- bottom-right went from 18 predictions to 2.
-  The cells around an object used to be trained as background but still fired at
-  inference, each with its own class guess; as positives they learn the right class
-  and box, and NMS merges them.
-- **What's left:** small objects (the 320px input), look-alike classes (highway vs.
-  parking, bottom-right), and a few background false positives that recur from run
-  to run.
-
-### Run 4: the same recipe, 100 epochs
-
-One change from run 3: twice the epochs, with the cosine schedule stretched to match.
-Details: [results/run04_long](results/run04_long/README.md).
-
-| val mAP@0.5 at epoch | 49 | 69 | 89 | 99 |
-|---|---|---|---|---|
-| run 3 (50 epochs) | **0.293** | -- | -- | -- |
-| run 4 (100 epochs) | 0.307 | 0.362 | 0.400 | **0.402** |
+| [run01_baseline](results/run01_baseline/README.md) | -- | 50 | 0.156 | classification overfits from epoch 18; stacked duplicate boxes |
+| [run02_augment](results/run02_augment/README.md) | + augmentation (no flips), AdamW, warmup + cosine LR | 50 | 0.254 | overfitting gone; val mAP still rising at the end |
+| [run03_center](results/run03_center/README.md) | + center sampling | 50 | 0.293 | duplicate stacks gone: neighbouring cells now learn the right class and box |
+| [run04_long](results/run04_long/README.md) | trained 2x longer | 100 | **0.402** | plateau at ~0.40; late overfitting shows up as boxes on pictograms inside signs |
 
 ![run 4 predictions on test images](results/run04_long/conf07.png)
 
-*Same test images, conf 0.7. Green: ground truth. Red: predictions.*
-
-What this run shows:
-
-- **+37% mAP over run 3**, levelling off at ~0.40 over the last 20 epochs.
-- **Late overfitting:** from epoch ~70, val objectness loss rises (0.50 -> 0.70)
-  while train losses keep falling. It shows up as a new error: small, confident boxes
-  on pictograms *inside* larger signs (top-middle, bottom-right) -- NMS can't remove
-  those, since they barely overlap the sign's own box.
-- **The background false positives that recurred in runs 2 and 3 are gone.**
-- This is the model's best result so far, and likely close to what this recipe can
-  do on ~4,000 training images. Whether 0.40 is good for a from-scratch model on this
-  data is what the YOLOv8n from-scratch baseline will show.
+*Run 4 on test images, conf 0.7. Green: ground truth. Red: predictions.*
 
 For scale: a COCO-pretrained YOLOv8n fine-tuned on this dataset in an earlier
 project reached 0.79 mAP@0.5 -- with pretraining, Ultralytics' default training
 recipe (augmentation included) and a different split, so it's a ceiling, not a
 like-for-like comparison. The fair comparison is YOLOv8n trained from scratch under
-this repo's settings (see [Goal](#goal)).
+this repo's settings (see [Goal](#goal)) -- next section.
 
-## Running the tests
+## Comparison with YOLOv8n
+
+This repo's model (run04) vs. Ultralytics YOLOv8n trained from scratch, same split,
+320px, 100 epochs, scored by the same code (`colab/compare_models.ipynb`). Val split
+for now -- final numbers on test at the end. Full tables (recall by object size,
+per-class AP, NMS sweep): [results/comparison](results/comparison/README.md).
+
+| | own (run04) | YOLOv8n default recipe | YOLOv8n no flips + repeat-factor sampling |
+|---|---|---|---|
+| parameters / GFLOPs at 320 | 3.57M / 1.92 | 3.02M / 2.03 | 3.02M / 2.03 |
+| **mAP@0.5** | **0.402** | 0.283 | 0.284 |
+| class-agnostic mAP@0.5 | 0.678 | **0.769** | 0.759 |
+| mAP lost to wrong classes | **0.276** | 0.486 | 0.475 |
+| F1 at each model's best threshold | **0.626** | 0.575 | 0.594 |
+
+What it shows:
+
+- **Complementary strengths.** YOLOv8n finds and boxes objects better (class-agnostic
+  mAP ~0.76 vs 0.68) -- its box loss (DFL + CIoU) and dynamic target assignment are
+  stronger than this model's L1 distances and fixed size ranges. This model classifies
+  far better, and that decides mAP@0.5 at 320px.
+- **A hypothesis that didn't hold.** Against YOLOv8n's default recipe, the gap sat in
+  rare classes (classes with < 20 training objects: 0.11 vs 0.01 mean AP) and in
+  left/right signs (`mand_left`: 0.75 vs 0.00) -- pointing at the default's horizontal
+  flips, which swap left/right signs' meaning, and its lack of class rebalancing.
+  Training YOLOv8n again without flips and with the same repeat-factor sampling as this
+  model changed almost nothing (mAP 0.283 -> 0.284).
+- **Likely causes, not tested** (no further runs budgeted): mosaic augmentation at
+  320px shrinks a median 29px sign to ~15px for most of training -- enough to locate,
+  often not enough to read "30" vs "50" or an arrow's direction -- and Ultralytics'
+  loss weighting favours boxes over classes (7.5 + 1.5 vs 0.5).
+- **Caveats:** val split (this model's recipe was tuned on it), one run per model,
+  letterbox vs. stretch resizing not isolated.
+
+## Usage
 
 ```
-pip install -r requirements.txt   # torch, torchvision, pytest, Pillow, onnx, onnxruntime
-python -m pytest tests/ -v
+pip install -r requirements.txt
+python -m pytest tests/
+
+# manifest.json: built by data/coco_split.py (see colab/train_own_model.ipynb)
+python train_model.py --manifest manifest.json --out-dir runs/own --num-classes 54 --epochs 100
+python export_model.py --checkpoint runs/own/best.pt --num-classes 54 --out model_fp32.onnx
+python quantize_model.py --onnx model_fp32.onnx --out model_int8.onnx --manifest manifest.json
+python benchmark.py fp32=model_fp32.onnx int8=model_int8.onnx --threads 1 2 4
 ```
+
+Training ran on Colab: `colab/train_own_model.ipynb` for this model,
+`colab/train_yolov8n.ipynb` for the baselines, `colab/compare_models.ipynb` and
+`colab/quantize_own_model.ipynb` for the evaluation.
 
 ## Roadmap
 
@@ -255,8 +212,16 @@ python -m pytest tests/ -v
 - [x] Augmentation (box-aware, no horizontal flips) + LR schedule (val mAP@0.5 0.254)
 - [x] Center sampling (several positive cells per object) (val mAP@0.5 0.293)
 - [x] Long final training run with the settled recipe (100 epochs, val mAP@0.5 0.402)
-- [ ] Per-class AP vs. training examples (is the late overfitting a data limit?)
-- [ ] Reference YOLOv8n baselines (from-scratch and pretrained)
-- [ ] Three-way comparison
-- [ ] Quantization (PTQ, QAT)
-- [ ] CPU/edge benchmarking (latency, memory, accuracy-vs-latency Pareto)
+- [x] Comparison tooling: per-class AP vs. training examples, class-agnostic mAP,
+      recall by size, confusions, per-model NMS/threshold tuning
+- [x] YOLOv8n from scratch (default recipe, then no flips + repeat-factor sampling)
+- [ ] YOLOv8n fine-tuned from COCO weights
+- [ ] Three-way comparison on the test split
+- [x] Post-training INT8 quantization + CPU latency tooling
+- [ ] Quantization results
+
+## License
+
+[MIT](LICENSE) for this repo's code. The YOLOv8n baselines are trained with
+[Ultralytics](https://github.com/ultralytics/ultralytics) as a separate dependency,
+under its own AGPL-3.0 license; none of its code or weights are included here.

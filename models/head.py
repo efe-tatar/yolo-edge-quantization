@@ -1,7 +1,5 @@
 import torch
-from models.c2f import C2fBlock
 from models.conv import ConvBlock
-from models.sppf import SPPF
 
 class Head(torch.nn.Module):
 
